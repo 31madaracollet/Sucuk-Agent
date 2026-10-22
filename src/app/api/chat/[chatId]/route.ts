@@ -17,13 +17,13 @@ export const dynamic = "force-dynamic";
 const LIMIT_MSG = "Üzgünüm, limit doldu.";
 
 const DEFAULT_MODEL_FOR_PROVIDER: Record<ProviderId, string> = {
-  groq: "llama-3.1-70b-versatile",
-  openrouter: "anthropic/claude-3-opus",
+  groq: "llama-3.3-70b-versatile",
+  openrouter: "anthropic/claude-3.5-sonnet",
   deepseek: "deepseek-chat",
   kimi: "moonshot-v1-8k",
-  nvidia: "nemotron-4-340b-instruct",
+  nvidia: "meta/llama-3.3-70b-instruct",
   openai: "gpt-4o-mini",
-  google: "gemini-1.5-flash",
+  google: "gemini-2.0-flash",
   grok: "grok-2-latest",
   huggingface: "HuggingFaceH4/zephyr-7b-beta",
 };
@@ -118,7 +118,7 @@ export async function POST(
         reason: `Düz sohbet modu — kullanıcı seçimi: ${reqProvider} / ${reqModel}`,
       };
     } else if (mode === "plain") {
-      decision = { agent: "chat", provider: "groq", model: "llama-3.1-70b-versatile", reason: "Düz sohbet modu (kullanıcı seçimi)." };
+      decision = { agent: "chat", provider: "groq", model: "llama-3.3-70b-versatile", reason: "Düz sohbet modu (kullanıcı seçimi)." };
     } else {
       const r = routeRequest(content);
       decision = { agent: r.agent, provider: r.provider as ProviderId, model: r.model, reason: r.reason };

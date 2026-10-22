@@ -4,13 +4,13 @@ import { createProviderManager, DEFAULT_PROVIDER_ORDER, ProviderId } from "@/lib
 export const dynamic = "force-dynamic";
 
 const DEFAULT_MODEL_FOR_PROVIDER: Record<string, string> = {
-  groq: "llama-3.1-70b-versatile",
-  openrouter: "anthropic/claude-3-opus",
+  groq: "llama-3.3-70b-versatile",
+  openrouter: "anthropic/claude-3.5-sonnet",
   deepseek: "deepseek-chat",
   kimi: "moonshot-v1-8k",
-  nvidia: "nemotron-4-340b-instruct",
+  nvidia: "meta/llama-3.3-70b-instruct",
   openai: "gpt-4o-mini",
-  google: "gemini-1.5-flash",
+  google: "gemini-2.0-flash",
   grok: "grok-2-latest",
   huggingface: "HuggingFaceH4/zephyr-7b-beta",
 };

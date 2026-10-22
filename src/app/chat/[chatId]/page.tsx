@@ -22,22 +22,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
 const MODEL_OPTIONS: Array<{ provider: string; model: string; label: string; group: string }> = [
-  { provider: "google", model: "gemini-1.5-flash", label: "Gemini 1.5 Flash", group: "Google" },
-  { provider: "google", model: "gemini-1.5-pro", label: "Gemini 1.5 Pro", group: "Google" },
+  { provider: "google", model: "gemini-2.0-flash", label: "Gemini 2.0 Flash", group: "Google" },
+  { provider: "google", model: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite", group: "Google" },
   { provider: "openai", model: "gpt-4o-mini", label: "GPT-4o mini", group: "OpenAI" },
   { provider: "openai", model: "gpt-4o", label: "GPT-4o", group: "OpenAI" },
-  { provider: "groq", model: "llama-3.1-70b-versatile", label: "Llama 3.1 70B", group: "Groq" },
-  { provider: "groq", model: "mixtral-8x7b-32768", label: "Mixtral 8x7B", group: "Groq" },
+  { provider: "groq", model: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", group: "Groq" },
+  { provider: "groq", model: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant", group: "Groq" },
   { provider: "grok", model: "grok-2-latest", label: "Grok 2", group: "Grok (xAI)" },
-  { provider: "grok", model: "grok-2-vision-1212", label: "Grok 2 Vision", group: "Grok (xAI)" },
-  { provider: "openrouter", model: "anthropic/claude-3-opus", label: "Claude 3 Opus", group: "OpenRouter" },
-  { provider: "openrouter", model: "meta-llama/llama-3.1-405b-instruct", label: "Llama 405B (OR)", group: "OpenRouter" },
+  { provider: "grok", model: "grok-4", label: "Grok 4", group: "Grok (xAI)" },
+  { provider: "openrouter", model: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet", group: "OpenRouter" },
+  { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B (OR)", group: "OpenRouter" },
   { provider: "deepseek", model: "deepseek-chat", label: "DeepSeek Chat", group: "DeepSeek" },
   { provider: "deepseek", model: "deepseek-reasoner", label: "DeepSeek Reasoner", group: "DeepSeek" },
   { provider: "kimi", model: "moonshot-v1-8k", label: "Moonshot 8K", group: "KIMI" },
   { provider: "kimi", model: "moonshot-v1-32k", label: "Moonshot 32K", group: "KIMI" },
-  { provider: "nvidia", model: "nemotron-4-340b-instruct", label: "Nemotron 340B", group: "Nvidia" },
-  { provider: "nvidia", model: "llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B", group: "Nvidia" },
+  { provider: "nvidia", model: "meta/llama-3.3-70b-instruct", label: "Llama 3.3 70B (Nvidia)", group: "Nvidia" },
+  { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B", group: "Nvidia" },
   { provider: "huggingface", model: "HuggingFaceH4/zephyr-7b-beta", label: "Zephyr 7B", group: "Hugging Face" },
 ];
 
@@ -51,7 +51,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<"auto" | "plain">("auto");
   const [selectedProvider, setSelectedProvider] = useState("groq");
-  const [selectedModel, setSelectedModel] = useState("llama-3.1-70b-versatile");
+  const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [usedProvider, setUsedProvider] = useState<string | null>(null);
