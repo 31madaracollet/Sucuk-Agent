@@ -39,20 +39,21 @@ async function tryProviders(
   targets: Array<{ provider: ProviderId; model: string }>,
   messages: { role: string; content: string }[]
 ) {
+  const attempts: Array<{ provider: string; model: string; error: string; status?: number }> = [];
   for (const t of targets) {
     try {
       const llm = await manager.chat(t.provider, t.model, messages, {
         temperature: 0.7,
         maxTokens: 2048,
       });
-      return { text: llm.text, provider: llm.provider, model: llm.model };
+      return { text: llm.text, provider: llm.provider, model: llm.model, attempts };
     } catch (err: any) {
       const msg = err?.message ?? String(err);
-      // Kota bitti veya model hatası — sıradaki provider'a geç
+      attempts.push({ provider: t.provider, model: t.model, error: msg, status: (err as any)?.status });
       continue;
     }
   }
-  return null;
+  return { text: null as any, provider: null as any, model: null as any, attempts } as any;
 }
 
 export async function GET(
@@ -108,7 +109,6 @@ export async function POST(
       await updateChatTitle(params.chatId, content.slice(0, 40));
     }
 
-    // Yönlendirme: plain + explicit provider/model varsa onu kullan, yoksa groq default
     let decision: { agent: string; provider: ProviderId; model: string; reason: string };
     if (mode === "plain" && reqProvider && reqModel) {
       decision = {
@@ -155,7 +155,6 @@ export async function POST(
         { role: "user", content },
       ];
 
-      // Hedef sıra: seçili olan ilk, sonra default sıradaki her provider kendi default modeliyle
       const order: Array<{ provider: ProviderId; model: string }> = [
         { provider: decision.provider, model: decision.model },
         ...DEFAULT_PROVIDER_ORDER.filter((p) => p !== decision.provider).map((p) => ({
@@ -164,15 +163,17 @@ export async function POST(
         })),
       ];
 
-      const result = await tryProviders(manager, order, messages);
+      const result: any = await tryProviders(manager, order, messages);
 
-      if (result) {
-        assistantText = result.text;
-        usedProvider = result.provider as any;
-        usedModel = result.model;
+      if (result && (result as any).text) {
+        assistantText = (result as any).text;
+        usedProvider = (result as any).provider as any;
+        usedModel = (result as any).model;
+        limitExhausted = false;
       } else {
         limitExhausted = true;
-        assistantText = `${LIMIT_MSG} Tüm sağlayıcıların API anahtarlarının günlük kotası tükendi. Sistem "Düz Sohbet Moduna" geçti, ancak şu anda yanıt üretebilecek aktif API sağlayıcısı yok. Lütfen daha sonra tekrar deneyin.`;
+        const debug = ((result as any)?.attempts ?? []).map((a: any) => `${a.provider}/${a.model}: ${a.error}`).join(" | ");
+        assistantText = `${LIMIT_MSG} Tüm sağlayıcılar başarısız oldu. Teşhis: ${debug} — /api/debug bak.`;
       }
     }
 
@@ -192,6 +193,7 @@ export async function POST(
       assistant: assistantText,
       toolOutput,
       limitExhausted,
+      attempts: (result as any)?.attempts,
     });
   } catch (err: any) {
     return NextResponse.json(

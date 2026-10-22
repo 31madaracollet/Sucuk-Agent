@@ -195,7 +195,7 @@ export class ProviderManager {
         },
       };
       const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-      if (!res.ok) throw this.errorFromResponse(res);
+      if (!res.ok) throw await this.errorFromResponse(res);
       const json = await res.json();
       return json.candidates?.[0]?.content?.parts?.[0]?.text ?? "Boş yanıt.";
     }
@@ -211,7 +211,7 @@ export class ProviderManager {
         },
       };
       const res = await fetch(model.endpoint, { method: "POST", headers, body: JSON.stringify(payload) });
-      if (!res.ok) throw this.errorFromResponse(res);
+      if (!res.ok) throw await this.errorFromResponse(res);
       const json = await res.json();
       if (Array.isArray(json) && json[0]?.generated_text) return json[0].generated_text;
       if (json?.generated_text) return json.generated_text;
@@ -232,7 +232,7 @@ export class ProviderManager {
       stream: false,
     };
     const res = await fetch(model.endpoint, { method: "POST", headers, body: JSON.stringify(body) });
-    if (!res.ok) throw this.errorFromResponse(res);
+    if (!res.ok) throw await this.errorFromResponse(res);
     const json = await res.json();
     return json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "Boş yanıt.";
   }
@@ -253,9 +253,12 @@ export class ProviderManager {
     );
   }
 
-  private errorFromResponse(res: Response): Error {
-    const e = new Error(`HTTP ${res.status}: ${res.statusText}`);
+  private async errorFromResponse(res: Response): Promise<Error> {
+    let body = "";
+    try { body = await res.text(); } catch {}
+    const e = new Error(`HTTP ${res.status}: ${res.statusText} - ${body.slice(0,300)}`);
     (e as any).status = res.status;
+    (e as any).body = body;
     return e;
   }
 }
