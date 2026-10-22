@@ -180,3 +180,5 @@ scripts/seed.mjs     Varsayılan hesap seed scripti
 - Bu depodaki kodda **gerçek API anahtarları yer almıyor**; anahtarlar sadece ortam değişkeni / GitHub Secrets / Vercel Environment Variables üzerinden okunur.
 - Supabase yapılandırılmamışsa sistem demo (bellek içi) modunda çalışır ve iki varsayılan hesabı otomatik olarak oluşturur — bu da geliştirme ve önizleme için yeterlidir.
 - Gerçek dağıtımda Supabase veritabanı ve Vercel ortam değişkenleri zorunludur.
+
+<!-- deploy trigger 2026-10-22T17:32:31Z -->
