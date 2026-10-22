@@ -193,7 +193,6 @@ export async function POST(
       assistant: assistantText,
       toolOutput,
       limitExhausted,
-      attempts: (result as any)?.attempts,
     });
   } catch (err: any) {
     return NextResponse.json(
