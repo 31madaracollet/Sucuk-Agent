@@ -7,7 +7,7 @@ import {
   updateChatTitle,
   ensureDemoProfiles,
 } from "@/lib/storage";
-import { createProviderManager, DEFAULT_PROVIDER_ORDER } from "@/lib/providers";
+import { createProviderManager, DEFAULT_PROVIDER_ORDER, PROVIDER_MODELS, ProviderId } from "@/lib/providers";
 import { routeRequest } from "@/lib/orchestrator";
 import { webSearch } from "@/lib/search";
 import { generateImage } from "@/lib/image";
@@ -16,37 +16,39 @@ export const dynamic = "force-dynamic";
 
 const LIMIT_MSG = "Üzgünüm, limit doldu.";
 
+const DEFAULT_MODEL_FOR_PROVIDER: Record<ProviderId, string> = {
+  groq: "llama-3.1-70b-versatile",
+  openrouter: "anthropic/claude-3-opus",
+  deepseek: "deepseek-chat",
+  kimi: "moonshot-v1-8k",
+  nvidia: "nemotron-4-340b-instruct",
+  openai: "gpt-4o-mini",
+  google: "gemini-1.5-flash",
+  grok: "grok-2-latest",
+  huggingface: "HuggingFaceH4/zephyr-7b-beta",
+};
+
 async function requireAuth() {
   const user = getCurrentUser();
   if (!user) return { error: "Oturum açmalısınız.", status: 401 } as const;
   return { user } as const;
 }
 
-/**
- * Bir providers listesini sırayla dener; birinde kota bittiyse sıradakine geçer.
- * Tümleri bittiyse null döner.
- */
 async function tryProviders(
   manager: ReturnType<typeof createProviderManager>,
-  providers: string[],
-  model: string,
+  targets: Array<{ provider: ProviderId; model: string }>,
   messages: { role: string; content: string }[]
 ) {
-  const lastErrors: string[] = [];
-  for (const p of providers) {
+  for (const t of targets) {
     try {
-      const llm = await manager.chat(p as any, model, messages, {
+      const llm = await manager.chat(t.provider, t.model, messages, {
         temperature: 0.7,
         maxTokens: 2048,
       });
       return { text: llm.text, provider: llm.provider, model: llm.model };
     } catch (err: any) {
       const msg = err?.message ?? String(err);
-      if (msg.startsWith("limit_dolu:")) {
-        lastErrors.push(`${p}: kota bitti`);
-        continue;
-      }
-      lastErrors.push(`${p}: ${msg}`);
+      // Kota bitti veya model hatası — sıradaki provider'a geç
       continue;
     }
   }
@@ -89,27 +91,38 @@ export async function POST(
 
   try {
     const body = await req.json();
-    const { content, mode = "auto" } = body as {
+    const { content, mode = "auto", provider: reqProvider, model: reqModel } = body as {
       content?: string;
       mode?: "auto" | "plain";
+      provider?: string;
+      model?: string;
     };
 
     if (!content || typeof content !== "string") {
       return NextResponse.json({ error: "İçerik gerekli." }, { status: 400 });
     }
 
-    // Kullanıcı mesajını kaydet.
     await addMessage(params.chatId, { chatId: params.chatId, sender: "user", content });
 
-    // Başlık yoksa ilk kelimelerle ayarla.
     if (chat.title === "Yeni Sohbet") {
       await updateChatTitle(params.chatId, content.slice(0, 40));
     }
 
-    // Yönlendirme kararı.
-    const decision = mode === "plain"
-      ? { agent: "chat", provider: "groq", model: "llama-3.1-70b-versatile", reason: "Düz sohbet modu (kullanıcı seçimi)." }
-      : routeRequest(content);
+    // Yönlendirme: plain + explicit provider/model varsa onu kullan, yoksa groq default
+    let decision: { agent: string; provider: ProviderId; model: string; reason: string };
+    if (mode === "plain" && reqProvider && reqModel) {
+      decision = {
+        agent: "chat",
+        provider: reqProvider as ProviderId,
+        model: reqModel,
+        reason: `Düz sohbet modu — kullanıcı seçimi: ${reqProvider} / ${reqModel}`,
+      };
+    } else if (mode === "plain") {
+      decision = { agent: "chat", provider: "groq", model: "llama-3.1-70b-versatile", reason: "Düz sohbet modu (kullanıcı seçimi)." };
+    } else {
+      const r = routeRequest(content);
+      decision = { agent: r.agent, provider: r.provider as ProviderId, model: r.model, reason: r.reason };
+    }
 
     let assistantText = "";
     let usedProvider = decision.provider;
@@ -117,21 +130,17 @@ export async function POST(
     let toolOutput: string | null = null;
     let limitExhausted = false;
 
-    // Görsel üretimi.
     if (decision.agent === "image") {
       const img = await generateImage(content);
       if (img.ok) {
-        assistantText = `Aşağıda istediğiniz görsel hazırlandı: "${content}".`;
+        assistantText = `İstediğin görsel hazır: "${content}"`;
       } else {
         assistantText = `Görsel üretilemedi: ${img.error}`;
       }
     } else {
       const manager = createProviderManager();
-      const systemContent = `Sen Sucuk-Agent'ın ${decision.agent} uzmanısın. Türkçe, net, yardımcı ve güvenli yanıtlar ver. ${
-        decision.reason
-      }`;
+      const systemContent = `Sen Sucuk-Agent'ın ${decision.agent} uzmanısın. Türkçe, net, yardımcı ve güvenli yanıtlar ver. ${decision.reason}`;
 
-      // Arama ajanı için önce canlı web araması yap, çıktısıyla yanıt üret.
       if (decision.agent === "search") {
         const results = await webSearch(content, 5);
         if (results.length > 0) {
@@ -146,13 +155,20 @@ export async function POST(
         { role: "user", content },
       ];
 
-      // Önce karar verilen sağlayıcı, sonra sıralı fallback sağlayıcılar.
-      const order = [decision.provider, ...DEFAULT_PROVIDER_ORDER.filter((p) => p !== decision.provider)];
-      const result = await tryProviders(manager, order, decision.model, messages);
+      // Hedef sıra: seçili olan ilk, sonra default sıradaki her provider kendi default modeliyle
+      const order: Array<{ provider: ProviderId; model: string }> = [
+        { provider: decision.provider, model: decision.model },
+        ...DEFAULT_PROVIDER_ORDER.filter((p) => p !== decision.provider).map((p) => ({
+          provider: p as ProviderId,
+          model: DEFAULT_MODEL_FOR_PROVIDER[p as ProviderId],
+        })),
+      ];
+
+      const result = await tryProviders(manager, order, messages);
 
       if (result) {
         assistantText = result.text;
-        usedProvider = result.provider;
+        usedProvider = result.provider as any;
         usedModel = result.model;
       } else {
         limitExhausted = true;
