@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 const INTEGRATIONS = [
   { id: "supabase", label: "Supabase", desc: "Sohbetler, kullanıcılar, projeler — kalıcı DB", icon: Database, color: "bg-green-600" },
   { id: "github", label: "GitHub", desc: "Repo bağla, kodları Agent ile yönet", icon: Github, color: "bg-zinc-800" },
-  { id: "google_drive", label: "Google Drive", desc: "Sohbet yedekleri Drive'a", icon: HardDrive, color: "bg-blue-600" },
+  { id: "google_drive", label: "Google Drive", desc: "Sohbet yedekleri Drive'a (oto yedek aktif)", icon: HardDrive, color: "bg-blue-600" },
   { id: "terabox", label: "TeraBox", desc: "TeraBox bulut depolama", icon: Cloud, color: "bg-sky-600" },
   { id: "workspace", label: "Google Workspace", desc: "Docs/Sheets entegrasyonu", icon: FileSpreadsheet, color: "bg-yellow-600" },
   { id: "excel", label: "Excel / Sheets", desc: "Tabloları Agent ile doldur", icon: Table, color: "bg-emerald-600" },
@@ -170,6 +170,7 @@ export default function WorkspacePage() {
         </Card>
       </div>
 
+      <div className="rounded-xl border border-blue-900 bg-blue-950 p-3 text-xs text-blue-200">📁 Drive Oto Yedek Klasörü: <a href="https://drive.google.com/drive/folders/1WJxce63LuN_LO4Z85x2DXluL0PSDGues" target="_blank" className="underline">Sucuk-Agent-Sohbet-Yedekleri</a> — her mesaj Supabase'e yazılır, Drive'a oto yedeklenir (arena connector ile doğrulandı). Navigasyon: <b>Sohbet</b>=dashboard, <b>Arkadaşlar</b>=arkadaş ekle+DM, <b>Projeler</b>=arkadaşlarla proje+araçlar. Auto-scroll kapalı, yanıtlar tane tane.</div>
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5" /> Sohbetler & Drive</CardTitle></CardHeader>
         <CardContent className="space-y-2">

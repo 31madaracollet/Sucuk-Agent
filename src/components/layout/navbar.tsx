@@ -5,10 +5,10 @@ import { useEffect, useState } from "react"
 import { Bot, Shield, Users, MessageCircle, Settings, LogOut, Menu, X, Plug, Bell } from "lucide-react"
 
 const navItems = [
-  { href: "/dashboard", label: "Sohbetler", icon: MessageCircle },
-  { href: "/friends", label: "Arkadaşlar", icon: Users },
-  { href: "/workspace", label: "Workspace", icon: Plug },
-  { href: "/settings", label: "Ayarlar", icon: Settings },
+  { href: "/dashboard", label: "Sohbet", icon: MessageCircle, hint: "Sohbet ekranı: tüm konuşmaların, Drive yedek тут" },
+  { href: "/friends", label: "Arkadaşlar", icon: Users, hint: "Arkadaş ekle & DM (Supabase realtime) + Drive yedek" },
+  { href: "/workspace", label: "Projeler", icon: Plug, hint: "Arkadaşlarla proje yap & Bağlantılar/Araçlar" },
+  { href: "/settings", label: "Ayarlar", icon: Settings, hint: "Ayarlar" },
 ]
 
 export function Navbar() {
@@ -71,7 +71,7 @@ export function Navbar() {
               const Icon = it.icon
               const isFriends = it.href === "/friends"
               return (
-                <Link key={it.href} href={it.href} className="relative flex items-center gap-2 rounded-full px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white transition">
+                <Link key={it.href} href={it.href} title={(it as any).hint} className="relative flex items-center gap-2 rounded-full px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white transition">
                   <Icon className="h-4 w-4" /> {it.label}
                   {isFriends && unread > 0 && <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">{unread}</span>}
                 </Link>
@@ -118,6 +118,7 @@ export function Navbar() {
                 <Link
                   key={it.href}
                   href={it.href}
+                  title={(it as any).hint}
                   onClick={() => setOpen(false)}
                   className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-zinc-300 hover:bg-zinc-900"
                 >
