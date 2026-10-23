@@ -24,7 +24,7 @@ export function routeRequest(message: string): RouteDecision {
 
   let agent: RouteDecision["agent"] = "text";
   let provider: ProviderId = "groq";
-  let model = "llama-3.3-70b-versatile";
+  let model = "openai/gpt-oss-120b";
   let reason = "Genel metin sohbeti.";
 
   if (imageKeywords.some((k) => m.includes(k))) {
@@ -35,7 +35,7 @@ export function routeRequest(message: string): RouteDecision {
   } else if (codeKeywords.some((k) => m.includes(k))) {
     agent = "code";
     provider = "openrouter";
-    model = "anthropic/claude-3.5-sonnet";
+    model = "anthropic/claude-sonnet-5.5";
     reason = "Kod yazma / yazılım talebi → OpenRouter üzerinden Claude 3 Opus.";
   } else if (reasoningKeywords.some((k) => m.includes(k))) {
     agent = "reasoning";
@@ -45,7 +45,7 @@ export function routeRequest(message: string): RouteDecision {
   } else if (searchKeywords.some((k) => m.includes(k))) {
     agent = "search";
     provider = "groq";
-    model = "llama-3.3-70b-versatile";
+    model = "openai/gpt-oss-120b";
     reason = "Canlı web arama gerektirebilecek sorgu → Grok? yok, Groq üzerinden canlı arama destekli yanıt.";
   } else {
     reason = "Düz sohbet / genel soru.";

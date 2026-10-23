@@ -53,21 +53,21 @@ const PROVIDER_ENV_KEYS: Record<ProviderId, string[]> = {
 /*  Model eşlemeleri (sağlayıcı -> model -> endpoint)                  */
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModel[]> = {
   google: [
-    { provider: "google", model: "gemini-2.0-flash", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent", chat: true },
-    { provider: "google", model: "gemini-2.0-flash-lite", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent", chat: true },
+    { provider: "google", model: "gemini-3.8-flash", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", chat: true },
+    { provider: "google", model: "gemini-3.8-flash", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", chat: true },
   ],
   openai: [
     { provider: "openai", model: "gpt-4o", endpoint: "https://api.openai.com/v1/chat/completions", chat: true },
     { provider: "openai", model: "gpt-4o-mini", endpoint: "https://api.openai.com/v1/chat/completions", chat: true },
   ],
   groq: [
-    { provider: "groq", model: "llama-3.3-70b-versatile", endpoint: "https://api.groq.com/openai/v1/chat/completions", chat: true },
-    { provider: "groq", model: "llama-3.1-8b-instant", endpoint: "https://api.groq.com/openai/v1/chat/completions", chat: true },
+    { provider: "groq", model: "openai/gpt-oss-120b", endpoint: "https://api.groq.com/openai/v1/chat/completions", chat: true },
+    { provider: "groq", model: "openai/gpt-oss-20b", endpoint: "https://api.groq.com/openai/v1/chat/completions", chat: true },
   ],
   grok: [],
   openrouter: [
-    { provider: "openrouter", model: "anthropic/claude-3.5-sonnet", endpoint: "https://openrouter.ai/api/v1/chat/completions", chat: true },
-    { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct", endpoint: "https://openrouter.ai/api/v1/chat/completions", chat: true },
+    { provider: "openrouter", model: "anthropic/claude-sonnet-5.5", endpoint: "https://openrouter.ai/api/v1/chat/completions", chat: true },
+    { provider: "openrouter", model: "anthropic/claude-sonnet-5", endpoint: "https://openrouter.ai/api/v1/chat/completions", chat: true },
   ],
   deepseek: [
     { provider: "deepseek", model: "deepseek-chat", endpoint: "https://api.deepseek.com/v1/chat/completions", chat: true },
@@ -78,7 +78,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModel[]> = {
     { provider: "kimi", model: "moonshot-v1-32k", endpoint: "https://api.moonshot.ai/v1/chat/completions", chat: true },
   ],
   nvidia: [
-    { provider: "nvidia", model: "meta/llama-3.3-70b-instruct", endpoint: "https://integrate.api.nvidia.com/v1/chat/completions", chat: true },
+    { provider: "nvidia", model: "nvidia/llama-3.3-nemotron-super-49b-v1", endpoint: "https://integrate.api.nvidia.com/v1/chat/completions", chat: true },
     { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct", endpoint: "https://integrate.api.nvidia.com/v1/chat/completions", chat: true },
   ],
   huggingface: [
