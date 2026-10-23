@@ -2,21 +2,21 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { Bot, Shield, Users, MessageCircle, Settings, LogOut, Menu, X, Sparkles } from "lucide-react"
-import { getCurrentUser } from "@/lib/auth"
+import { Bot, Shield, Users, MessageCircle, Settings, LogOut, Menu, X, Plug, Bell } from "lucide-react"
 
 const navItems = [
   { href: "/dashboard", label: "Sohbetler", icon: MessageCircle },
   { href: "/friends", label: "Arkadaşlar", icon: Users },
+  { href: "/workspace", label: "Workspace", icon: Plug },
   { href: "/settings", label: "Ayarlar", icon: Settings },
 ]
 
 export function Navbar() {
   const [open, setOpen] = useState(false)
   const [user, setUser] = useState<{ username: string; role: string } | null>(null)
+  const [unread, setUnread] = useState(0)
 
   useEffect(() => {
-    // client-side cookie yok, ama local /api/auth/me üzerinden de alınabilir; basit fallback
     try {
       const m = document.cookie.match(/sucuk_session=([^;]+)/)
       if (m) {
@@ -24,11 +24,20 @@ export function Navbar() {
         setUser({ username: payload.u, role: payload.r })
       }
     } catch {}
+    // bildirim say poll
+    const loadNotifs = async () => {
+      try {
+        const r = await fetch("/api/notifications", { credentials: "include" })
+        const j = await r.json()
+        setUnread(j.unread ?? 0)
+      } catch {}
+    }
+    loadNotifs()
+    const id = setInterval(loadNotifs, 15000)
+    return () => clearInterval(id)
   }, [])
 
-  // getCurrentUser client'ta çalışmaz (next/headers), yukarıdaki cookie parse yeterli
   if (!user) {
-    // Navbar'ı yine göster ama giriş iste
     return (
       <nav className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
         <div className="mx-auto max-w-7xl flex items-center justify-between px-4 md:px-6 py-3">
@@ -60,9 +69,11 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-1">
             {navItems.map((it) => {
               const Icon = it.icon
+              const isFriends = it.href === "/friends"
               return (
-                <Link key={it.href} href={it.href} className="flex items-center gap-2 rounded-full px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white transition">
+                <Link key={it.href} href={it.href} className="relative flex items-center gap-2 rounded-full px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white transition">
                   <Icon className="h-4 w-4" /> {it.label}
+                  {isFriends && unread > 0 && <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">{unread}</span>}
                 </Link>
               )
             })}
@@ -75,6 +86,10 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link href="/friends" className="relative hidden sm:flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-700">
+            <Bell className="h-3 w-3" /> {unread > 0 ? `${unread} bildirim` : "Bildirim"}
+            {unread > 0 && <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />}
+          </Link>
           <span className="hidden sm:flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300">
             <span className="h-2 w-2 rounded-full bg-white" /> {user.username}
             <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-black">{isAdmin ? "ADMIN" : "USER"}</span>
@@ -107,6 +122,7 @@ export function Navbar() {
                   className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-zinc-300 hover:bg-zinc-900"
                 >
                   <Icon className="h-4 w-4" /> {it.label}
+                  {it.href === "/friends" && unread > 0 && <span className="ml-auto rounded-full bg-red-600 px-2 py-0.5 text-xs text-white">{unread}</span>}
                 </Link>
               )
             })}

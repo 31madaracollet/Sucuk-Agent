@@ -106,3 +106,45 @@ create policy "dynamic_tools_all" on public.dynamic_tools for all using (true) w
 --   ('demo-admin-001', 'Sucuk9977', 'admin'),
 --   ('demo-user-001', 'Pirensine', 'user')
 -- on conflict (username) do nothing;
+
+-- 8. Bildirimler (arkadaş istekleri, DM, proje davetleri, duyurular)
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  type text not null check (type in ('friend_request','friend_accepted','dm','project_invite','announcement','system')),
+  title text not null,
+  content text not null,
+  from_user_id uuid references public.profiles(id),
+  read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_notifications_user on public.notifications(user_id);
+create index if not exists idx_notifications_read on public.notifications(user_id, read);
+
+-- 9. Projeler (arkadaşlarla ortak workspace)
+create table if not exists public.projects (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text,
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_projects_owner on public.projects(owner_id);
+
+-- 10. Proje üyeleri
+create table if not exists public.project_members (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  role text not null check (role in ('owner','member')) default 'member',
+  created_at timestamptz not null default now(),
+  unique(project_id, user_id)
+);
+
+-- RLS for new tables
+alter table public.notifications enable row level security;
+alter table public.projects enable row level security;
+alter table public.project_members enable row level security;
+create policy "notifications_all" on public.notifications for all using (true) with check (true);
+create policy "projects_all" on public.projects for all using (true) with check (true);
+create policy "project_members_all" on public.project_members for all using (true) with check (true);

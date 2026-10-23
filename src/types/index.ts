@@ -83,3 +83,40 @@ export interface RouteDecision {
   model: string;
   reason: string;
 }
+
+
+export interface Notification {
+  id: string
+  userId: string
+  type: "friend_request" | "friend_accepted" | "dm" | "project_invite" | "announcement" | "system"
+  title: string
+  content: string
+  fromUserId?: string
+  read: boolean
+  createdAt: string
+}
+
+export interface Project {
+  id: string
+  name: string
+  description: string
+  ownerId: string
+  createdAt: string
+}
+
+export interface ProjectMember {
+  id: string
+  projectId: string
+  userId: string
+  role: "owner" | "member"
+  createdAt: string
+}
+
+export interface IntegrationConfig {
+  id: string
+  provider: "supabase" | "github" | "google_drive" | "terabox" | "workspace" | "excel" | "notion" | "vercel"
+  name: string
+  connected: boolean
+  config: any
+  createdAt: string
+}
