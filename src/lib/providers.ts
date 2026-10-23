@@ -42,7 +42,7 @@ const PROVIDER_ENV_KEYS: Record<ProviderId, string[]> = {
   ],
   openai: ["OPENAI_API_KEY_1", "OPENAI_API_KEY_2", "OPENAI_API_KEY_3"],
   groq: ["GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3"],
-  grok: ["GROK_API_KEY_1", "GROK_API_KEY_2", "GROK_API_KEY_3"],
+  grok: ["", "", ""], // disabled by user
   openrouter: ["OPENROUTER_API_KEY_1", "OPENROUTER_API_KEY_2", "OPENROUTER_API_KEY_3"],
   deepseek: ["DEEPSEEK_API_KEY_1", "DEEPSEEK_API_KEY_2", "DEEPSEEK_API_KEY_3"],
   kimi: ["KIMI_API_KEY_1", "KIMI_API_KEY_2", "KIMI_API_KEY_3"],
@@ -64,10 +64,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModel[]> = {
     { provider: "groq", model: "llama-3.3-70b-versatile", endpoint: "https://api.groq.com/openai/v1/chat/completions", chat: true },
     { provider: "groq", model: "llama-3.1-8b-instant", endpoint: "https://api.groq.com/openai/v1/chat/completions", chat: true },
   ],
-  grok: [
-    { provider: "grok", model: "grok-2-latest", endpoint: "https://api.x.ai/v1/chat/completions", chat: true },
-    { provider: "grok", model: "grok-4", endpoint: "https://api.x.ai/v1/chat/completions", chat: true },
-  ],
+  grok: [],
   openrouter: [
     { provider: "openrouter", model: "anthropic/claude-3.5-sonnet", endpoint: "https://openrouter.ai/api/v1/chat/completions", chat: true },
     { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct", endpoint: "https://openrouter.ai/api/v1/chat/completions", chat: true },
@@ -277,6 +274,5 @@ export const DEFAULT_PROVIDER_ORDER: ProviderId[] = [
   "nvidia",
   "openai",
   "google",
-  "grok",
-  "huggingface",
+  "huggingface", // grok disabled
 ];

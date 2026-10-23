@@ -28,8 +28,6 @@ const MODEL_OPTIONS: Array<{ provider: string; model: string; label: string; gro
   { provider: "openai", model: "gpt-4o", label: "GPT-4o", group: "OpenAI" },
   { provider: "groq", model: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", group: "Groq" },
   { provider: "groq", model: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant", group: "Groq" },
-  { provider: "grok", model: "grok-2-latest", label: "Grok 2", group: "Grok (xAI)" },
-  { provider: "grok", model: "grok-4", label: "Grok 4", group: "Grok (xAI)" },
   { provider: "openrouter", model: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet", group: "OpenRouter" },
   { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B (OR)", group: "OpenRouter" },
   { provider: "deepseek", model: "deepseek-chat", label: "DeepSeek Chat", group: "DeepSeek" },

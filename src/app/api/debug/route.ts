@@ -11,7 +11,7 @@ const DEFAULT_MODEL_FOR_PROVIDER: Record<string, string> = {
   nvidia: "meta/llama-3.3-70b-instruct",
   openai: "gpt-4o-mini",
   google: "gemini-2.0-flash",
-  grok: "grok-2-latest",
+  // grok disabled
   huggingface: "HuggingFaceH4/zephyr-7b-beta",
 };
 
@@ -27,7 +27,7 @@ export async function GET() {
     google: ["GOOGLE_API_KEY_1","GOOGLE_API_KEY_2","GOOGLE_API_KEY_3"],
     openai: ["OPENAI_API_KEY_1","OPENAI_API_KEY_2","OPENAI_API_KEY_3"],
     groq: ["GROQ_API_KEY_1","GROQ_API_KEY_2","GROQ_API_KEY_3"],
-    grok: ["GROK_API_KEY_1","GROK_API_KEY_2","GROK_API_KEY_3"],
+    grok: ["","",""],
     openrouter: ["OPENROUTER_API_KEY_1","OPENROUTER_API_KEY_2","OPENROUTER_API_KEY_3"],
     deepseek: ["DEEPSEEK_API_KEY_1","DEEPSEEK_API_KEY_2","DEEPSEEK_API_KEY_3"],
     kimi: ["KIMI_API_KEY_1","KIMI_API_KEY_2","KIMI_API_KEY_3"],

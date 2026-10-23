@@ -24,7 +24,6 @@ const DEFAULT_MODEL_FOR_PROVIDER: Record<ProviderId, string> = {
   nvidia: "meta/llama-3.3-70b-instruct",
   openai: "gpt-4o-mini",
   google: "gemini-2.0-flash",
-  grok: "grok-2-latest",
   huggingface: "HuggingFaceH4/zephyr-7b-beta",
 };
 
