@@ -12,7 +12,7 @@ const DEFAULT_MODEL_FOR_PROVIDER: Record<string, string> = {
   openai: "gpt-4o-mini",
   google: "gemini-2.0-flash",
   // grok disabled
-  huggingface: "HuggingFaceH4/zephyr-7b-beta",
+  huggingface: "Qwen/Qwen2.5-7B-Instruct",
 };
 
 export async function GET() {

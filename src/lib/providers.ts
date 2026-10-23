@@ -82,7 +82,8 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModel[]> = {
     { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct", endpoint: "https://integrate.api.nvidia.com/v1/chat/completions", chat: true },
   ],
   huggingface: [
-    { provider: "huggingface", model: "HuggingFaceH4/zephyr-7b-beta", endpoint: "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta", chat: true },
+    { provider: "huggingface", model: "Qwen/Qwen2.5-7B-Instruct", endpoint: "https://router.huggingface.co/v1/chat/completions", chat: true },
+    { provider: "huggingface", model: "HuggingFaceH4/zephyr-7b-beta", endpoint: "https://router.huggingface.co/v1/chat/completions", chat: true },
   ],
 };
 
@@ -198,21 +199,21 @@ export class ProviderManager {
     }
 
     if (provider === "huggingface") {
+      // Yeni HF Inference Providers: OpenAI-uyumlu router.huggingface.co/v1 [6][12][16]
+      // Eski api-inference.huggingface.co artık 404 [16]
       headers["Authorization"] = `Bearer ${apiKey}`;
-      const payload = {
-        inputs: messages.map((m) => `${m.role}: ${m.content}`).join("\n"),
-        parameters: {
-          max_new_tokens: opts?.maxTokens ?? 1024,
-          temperature: opts?.temperature ?? 0.7,
-          return_full_text: false,
-        },
+      const body = {
+        model: model.model,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        temperature: opts?.temperature ?? 0.7,
+        max_tokens: opts?.maxTokens ?? 2048,
+        stream: false,
       };
-      const res = await fetch(model.endpoint, { method: "POST", headers, body: JSON.stringify(payload) });
+      const url = "https://router.huggingface.co/v1/chat/completions";
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
       if (!res.ok) throw await this.errorFromResponse(res);
       const json = await res.json();
-      if (Array.isArray(json) && json[0]?.generated_text) return json[0].generated_text;
-      if (json?.generated_text) return json.generated_text;
-      return JSON.stringify(json);
+      return json.choices?.[0]?.message?.content ?? json.choices?.[0]?.text ?? "Boş yanıt.";
     }
 
     // OpenAI uyumlu: OpenAI, Groq, Grok, OpenRouter, DeepSeek, Kimi, Nvidia
