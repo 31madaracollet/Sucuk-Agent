@@ -80,6 +80,9 @@ create index if not exists idx_friendships_friend_id on public.friendships(frien
 create index if not exists idx_direct_messages_receiver on public.direct_messages(receiver_id);
 create index if not exists idx_direct_messages_sender_receiver on public.direct_messages(sender_id, receiver_id);
 
+-- Dinamik kullanıcılar için şifre hash'i (admin ekler)
+alter table public.profiles add column if not exists password_hash text;
+
 -- Row Level Security (isteğe bağlı; servis rolü ile işlemler yapılıyor olsa da)
 alter table public.profiles enable row level security;
 alter table public.chats enable row level security;

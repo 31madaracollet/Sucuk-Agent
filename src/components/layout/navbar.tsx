@@ -1,137 +1,127 @@
-"use client";
+"use client"
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import {
-  Bot,
-  Shield,
-  User,
-  MessageCircle,
-  Image,
-  Search,
-  Settings,
-  LogOut,
-  Menu,
-  X,
-  Users,
-  BarChart3,
-} from "lucide-react";
-import { getCurrentUser } from "@/lib/auth";
+import Link from "next/link"
+import { useEffect, useState } from "react"
+import { Bot, Shield, Users, MessageCircle, Settings, LogOut, Menu, X, Sparkles } from "lucide-react"
+import { getCurrentUser } from "@/lib/auth"
 
 const navItems = [
   { href: "/dashboard", label: "Sohbetler", icon: MessageCircle },
   { href: "/friends", label: "Arkadaşlar", icon: Users },
   { href: "/settings", label: "Ayarlar", icon: Settings },
-];
+]
 
 export function Navbar() {
-  const [open, setOpen] = useState(false);
-  const [user, setUser] = useState<{ username: string; role: string } | null>(null);
+  const [open, setOpen] = useState(false)
+  const [user, setUser] = useState<{ username: string; role: string } | null>(null)
 
   useEffect(() => {
-    const u = getCurrentUser();
-    setUser(u ? { username: u.username, role: u.role } : null);
-  }, []);
+    // client-side cookie yok, ama local /api/auth/me üzerinden de alınabilir; basit fallback
+    try {
+      const m = document.cookie.match(/sucuk_session=([^;]+)/)
+      if (m) {
+        const payload = JSON.parse(atob(m[1].split(".")[0].replace(/-/g, "+").replace(/_/g, "/")))
+        setUser({ username: payload.u, role: payload.r })
+      }
+    } catch {}
+  }, [])
 
-  if (!user) return null;
+  // getCurrentUser client'ta çalışmaz (next/headers), yukarıdaki cookie parse yeterli
+  if (!user) {
+    // Navbar'ı yine göster ama giriş iste
+    return (
+      <nav className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
+        <div className="mx-auto max-w-7xl flex items-center justify-between px-4 md:px-6 py-3">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-black font-bold text-xs">SA</div>
+            <span className="text-sm font-semibold tracking-tight">Sucuk<span className="font-light text-zinc-400">Agent</span></span>
+          </Link>
+          <Link href="/login" className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black hover:bg-zinc-100">Giriş</Link>
+        </div>
+      </nav>
+    )
+  }
 
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin"
 
   return (
-    <nav className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur">
-      <div className="flex items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sucuk-600 text-white text-sm font-bold">
-            S
-          </div>
-          <Link href="/dashboard" className="ml-2 text-xl font-bold tracking-tight text-slate-900">
-            Sucuk<span className="text-sucuk-600">Agent</span>
+    <nav className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
+      <div className="mx-auto max-w-7xl flex items-center justify-between px-4 md:px-6 py-3">
+        <div className="flex items-center gap-6">
+          <Link href="/dashboard" className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-black">
+              <Bot className="h-4 w-4" />
+            </div>
+            <span className="text-sm font-semibold tracking-tight">Sucuk<span className="font-light text-zinc-400">Agent</span></span>
+            <span className="hidden sm:inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-[10px] tracking-wide text-zinc-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> SİYAH • BEYAZ • CİHAZ
+            </span>
           </Link>
-        </div>
-
-        <div className="hidden md:flex items-center gap-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-sucuk-600 transition"
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
+          <div className="hidden md:flex items-center gap-1">
+            {navItems.map((it) => {
+              const Icon = it.icon
+              return (
+                <Link key={it.href} href={it.href} className="flex items-center gap-2 rounded-full px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white transition">
+                  <Icon className="h-4 w-4" /> {it.label}
+                </Link>
+              )
+            })}
+            {isAdmin && (
+              <Link href="/admin" className="flex items-center gap-2 rounded-full px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white transition">
+                <Shield className="h-4 w-4" /> Yönetim
               </Link>
-            );
-          })}
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-sucuk-600 transition"
-            >
-              <Shield className="h-4 w-4" />
-              Yönetim
-            </Link>
-          )}
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="hidden sm:block text-sm text-slate-500">{user.username}</span>
-          <span className="hidden sm:block text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 bg-white">
-            {user.role === "admin" ? "Yönetici" : "Kullanıcı"}
+        <div className="flex items-center gap-2">
+          <span className="hidden sm:flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300">
+            <span className="h-2 w-2 rounded-full bg-white" /> {user.username}
+            <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-black">{isAdmin ? "ADMIN" : "USER"}</span>
           </span>
           <button
             onClick={() => {
-              document.cookie = "sucuk_session=; Path=/; Max-Age=0";
-              window.location.href = "/login";
+              document.cookie = "sucuk_session=; Path=/; Max-Age=0"
+              window.location.href = "/login"
             }}
-            className="flex items-center gap-2 text-sm font-medium text-red-600 hover:text-red-700"
+            className="hidden sm:flex items-center gap-2 rounded-full border border-zinc-800 px-3 py-2 text-sm text-zinc-400 hover:bg-white hover:text-black transition"
           >
             <LogOut className="h-4 w-4" /> Çıkış
           </button>
+          <button className="md:hidden p-2 text-zinc-400" onClick={() => setOpen((o) => !o)}>
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
-
-        <button
-          className="md:hidden p-2 text-slate-600 hover:text-sucuk-600"
-          onClick={() => setOpen((o) => !o)}
-        >
-          <Menu className="h-5 w-5" />
-        </button>
       </div>
 
       {open && (
-        <div className="md:hidden border-t border-slate-200 bg-white">
-          <div className="grid gap-1 px-6 py-4">
-            {navItems.map((item) => {
-              const Icon = item.icon;
+        <div className="md:hidden border-t border-zinc-800 bg-zinc-950">
+          <div className="px-4 py-3 grid gap-1">
+            {navItems.map((it) => {
+              const Icon = it.icon
               return (
                 <Link
-                  key={item.href}
-                  href={item.href}
+                  key={it.href}
+                  href={it.href}
                   onClick={() => setOpen(false)}
-                  className="flex items-center gap-2 px-3 py-3 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-sucuk-600"
+                  className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-zinc-300 hover:bg-zinc-900"
                 >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
+                  <Icon className="h-4 w-4" /> {it.label}
                 </Link>
-              );
+              )
             })}
             {isAdmin && (
-              <Link
-                href="/admin"
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-2 px-3 py-3 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-sucuk-600"
-              >
-                <Shield className="h-4 w-4" />
-                Yönetim
+              <Link href="/admin" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-zinc-300 hover:bg-zinc-900">
+                <Shield className="h-4 w-4" /> Yönetim
               </Link>
             )}
             <button
               onClick={() => {
-                document.cookie = "sucuk_session=; Path=/; Max-Age=0";
-                window.location.href = "/login";
-                setOpen(false);
+                document.cookie = "sucuk_session=; Path=/; Max-Age=0"
+                window.location.href = "/login"
+                setOpen(false)
               }}
-              className="w-full flex items-center gap-2 px-3 py-3 rounded-md text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700"
+              className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-red-400 hover:bg-zinc-900"
             >
               <LogOut className="h-4 w-4" /> Çıkış
             </button>
@@ -139,5 +129,5 @@ export function Navbar() {
         </div>
       )}
     </nav>
-  );
+  )
 }

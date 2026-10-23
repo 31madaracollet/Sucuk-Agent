@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin, isSupabaseConfigured } from "./supabase";
+import { supabase, supabaseAdmin, isSupabaseConfigured } from "./supabase"
 import type {
   Profile,
   Chat,
@@ -7,20 +7,20 @@ import type {
   DirectMessage,
   SystemAnnouncement,
   DynamicTool,
-} from "@/types";
+} from "@/types"
 
 /* ------------------------------------------------------------------ */
 /*  Demo / fallback store (kullanılırsa Supabase yapılandırılmamışsa) */
 /* ------------------------------------------------------------------ */
 
 const demo: {
-  profiles: Map<string, Profile>;
-  chats: Map<string, Chat>;
-  messages: Map<string, ChatMessage[]>;
-  friendships: Map<string, Friendship[]>;
-  dms: Map<string, DirectMessage[]>;
-  announcements: SystemAnnouncement[];
-  tools: DynamicTool[];
+  profiles: Map<string, Profile & { password_hash?: string }>
+  chats: Map<string, Chat>
+  messages: Map<string, ChatMessage[]>
+  friendships: Map<string, Friendship[]>
+  dms: Map<string, DirectMessage[]>
+  announcements: SystemAnnouncement[]
+  tools: DynamicTool[]
 } = {
   profiles: new Map(),
   chats: new Map(),
@@ -29,19 +29,19 @@ const demo: {
   dms: new Map(),
   announcements: [],
   tools: [],
-};
+}
 
-const id = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-const now = () => new Date().toISOString();
+const id = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+const now = () => new Date().toISOString()
 
 export async function ensureDemoProfiles() {
-  const admin = await getProfileByUsername("Sucuk9977");
+  const admin = await getProfileByUsername("Sucuk9977")
   if (!admin) {
-    await createProfile("demo-admin-001", "Sucuk9977", "admin");
+    await createProfile("demo-admin-001", "Sucuk9977", "admin")
   }
-  const user = await getProfileByUsername("Pirensine");
+  const user = await getProfileByUsername("Pirensine")
   if (!user) {
-    await createProfile("demo-user-001", "Pirensine", "user");
+    await createProfile("demo-user-001", "Pirensine", "user")
   }
 }
 
@@ -51,21 +51,30 @@ export function seedDemoAccounts() {
     username: "Sucuk9977",
     role: "admin",
     createdAt: now(),
-  };
+  }
   const user: Profile = {
     id: "demo-user-001",
     username: "Pirensine",
     role: "user",
     createdAt: now(),
-  };
-  demo.profiles.set(admin.id, admin);
-  demo.profiles.set(user.id, user);
-  return { admin, user };
+  }
+  demo.profiles.set(admin.id, admin)
+  demo.profiles.set(user.id, user)
+  return { admin, user }
 }
 
 /* ------------------------------------------------------------------ */
 /*  Profiles                                                         */
 /* ------------------------------------------------------------------ */
+
+export async function listProfiles(): Promise<Profile[]> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.from("profiles").select("*").order("createdAt", { ascending: true })
+    if (error) return []
+    return (data ?? []) as Profile[]
+  }
+  return Array.from(demo.profiles.values())
+}
 
 export async function getProfileByUsername(username: string) {
   if (isSupabaseConfigured && supabase) {
@@ -73,41 +82,75 @@ export async function getProfileByUsername(username: string) {
       .from("profiles")
       .select("*")
       .eq("username", username)
-      .single();
-    if (error || !data) return null;
-    return data as Profile;
+      .single()
+    if (error || !data) return null
+    return data as Profile
   }
-  const found = Array.from(demo.profiles.values()).find(
-    (p) => p.username === username
-  );
-  return found ?? null;
+  const found = Array.from(demo.profiles.values()).find((p) => p.username === username)
+  return found ?? null
+}
+
+export async function getProfileByUsernameWithPassword(username: string) {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.from("profiles").select("*").eq("username", username).single()
+    if (error || !data) return null
+    return data as Profile & { password_hash?: string }
+  }
+  const found = Array.from(demo.profiles.values()).find((p) => p.username === username)
+  return (found as any) ?? null
 }
 
 export async function getProfile(id: string) {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", id)
-      .single();
-    if (error || !data) return null;
-    return data as Profile;
+    const { data, error } = await supabase.from("profiles").select("*").eq("id", id).single()
+    if (error || !data) return null
+    return data as Profile
   }
-  return demo.profiles.get(id) ?? null;
+  return demo.profiles.get(id) ?? null
 }
 
 export async function createProfile(
-  id: string,
-  username: string,
-  role: "admin" | "user"
+  idOrUsername: string,
+  usernameOrRole: string,
+  roleOrPasswordHash?: string,
+  maybeHash?: string
 ) {
-  const profile: Profile = { id, username, role, createdAt: now() };
-  if (isSupabaseConfigured && supabaseAdmin) {
-    await supabaseAdmin.from("profiles").insert([profile]);
+  // Destek: createProfile(id, username, role) ve createProfile(id, username, role, password_hash)
+  let nid: string
+  let uname: string
+  let role: "admin" | "user"
+  let pwhash: string | undefined
+  if (maybeHash !== undefined) {
+    nid = idOrUsername
+    uname = usernameOrRole
+    role = roleOrPasswordHash as any
+    pwhash = maybeHash
+  } else if (roleOrPasswordHash && ["admin", "user"].includes(roleOrPasswordHash)) {
+    nid = idOrUsername
+    uname = usernameOrRole
+    role = roleOrPasswordHash as any
   } else {
-    demo.profiles.set(id, profile);
+    // Eski çağrı şekliyle karışmasın
+    nid = idOrUsername
+    uname = usernameOrRole
+    role = (roleOrPasswordHash as any) ?? "user"
   }
-  return profile;
+  const profile: any = { id: nid, username: uname, role, createdAt: now() }
+  if (pwhash) profile.password_hash = pwhash
+  if (isSupabaseConfigured && supabaseAdmin) {
+    await supabaseAdmin.from("profiles").insert([profile])
+  } else {
+    demo.profiles.set(nid, profile)
+  }
+  return profile as Profile
+}
+
+export async function deleteProfile(id: string) {
+  if (isSupabaseConfigured && supabaseAdmin) {
+    await supabaseAdmin.from("profiles").delete().eq("id", id)
+  } else {
+    demo.profiles.delete(id)
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -116,67 +159,65 @@ export async function createProfile(
 
 export async function listChats(userId: string): Promise<Chat[]> {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("chats")
-      .select("*")
-      .eq("userId", userId)
-      .order("updatedAt", { ascending: false });
-    if (error) return [];
-    return (data ?? []) as Chat[];
+    const { data, error } = await supabase.from("chats").select("*").eq("userId", userId).order("updatedAt", { ascending: false })
+    if (error) return []
+    return (data ?? []) as Chat[]
   }
   return Array.from(demo.chats.values())
     .filter((c) => c.userId === userId)
-    .sort((a, b) => (b.updatedAt < a.updatedAt ? -1 : 1));
+    .sort((a, b) => (b.updatedAt < a.updatedAt ? -1 : 1))
 }
 
-export async function createChat(
-  userId: string,
-  title = "Yeni Sohbet"
-): Promise<Chat> {
+export async function createChat(userId: string, title = "Yeni Sohbet"): Promise<Chat> {
   const chat: Chat = {
     id: id(),
     userId,
     title,
     createdAt: now(),
     updatedAt: now(),
-  };
-  if (isSupabaseConfigured && supabaseAdmin) {
-    await supabaseAdmin.from("chats").insert([chat]);
-  } else {
-    demo.chats.set(chat.id, chat);
-    demo.messages.set(chat.id, []);
   }
-  return chat;
+  if (isSupabaseConfigured && supabaseAdmin) {
+    await supabaseAdmin.from("chats").insert([chat])
+  } else {
+    demo.chats.set(chat.id, chat)
+    demo.messages.set(chat.id, [])
+  }
+  return chat
 }
 
 export async function getChat(chatId: string, userId: string) {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("chats")
-      .select("*")
-      .eq("id", chatId)
-      .eq("userId", userId)
-      .single();
-    if (error || !data) return null;
-    return data as Chat;
+    const { data, error } = await supabase.from("chats").select("*").eq("id", chatId).eq("userId", userId).single()
+    if (error || !data) return null
+    return data as Chat
   }
-  const chat = demo.chats.get(chatId);
-  if (!chat || chat.userId !== userId) return null;
-  return chat;
+  const chat = demo.chats.get(chatId)
+  if (!chat || chat.userId !== userId) return null
+  return chat
 }
 
 export async function updateChatTitle(chatId: string, title: string) {
   if (isSupabaseConfigured && supabaseAdmin) {
-    await supabaseAdmin
-      .from("chats")
-      .update({ title, updatedAt: now() })
-      .eq("id", chatId);
+    await supabaseAdmin.from("chats").update({ title, updatedAt: now() }).eq("id", chatId)
   } else {
-    const c = demo.chats.get(chatId);
+    const c = demo.chats.get(chatId)
     if (c) {
-      c.title = title;
-      c.updatedAt = now();
-      demo.chats.set(chatId, c);
+      c.title = title
+      c.updatedAt = now()
+      demo.chats.set(chatId, c)
+    }
+  }
+}
+
+export async function deleteChat(chatId: string, userId: string) {
+  if (isSupabaseConfigured && supabaseAdmin) {
+    await supabaseAdmin.from("chats").delete().eq("id", chatId).eq("userId", userId)
+    await supabaseAdmin.from("messages").delete().eq("chatId", chatId)
+  } else {
+    const c = demo.chats.get(chatId)
+    if (c && c.userId === userId) {
+      demo.chats.delete(chatId)
+      demo.messages.delete(chatId)
     }
   }
 }
@@ -187,39 +228,32 @@ export async function updateChatTitle(chatId: string, title: string) {
 
 export async function listMessages(chatId: string): Promise<ChatMessage[]> {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("chatId", chatId)
-      .order("createdAt", { ascending: true });
-    if (error) return [];
-    return (data ?? []) as ChatMessage[];
+    const { data, error } = await supabase.from("messages").select("*").eq("chatId", chatId).order("createdAt", { ascending: true })
+    if (error) return []
+    return (data ?? []) as ChatMessage[]
   }
-  return demo.messages.get(chatId) ?? [];
+  return demo.messages.get(chatId) ?? []
 }
 
 export async function addMessage(
   chatId: string,
   message: Omit<ChatMessage, "id" | "createdAt">
 ): Promise<ChatMessage> {
-  const m: ChatMessage = { ...message, id: id(), createdAt: now() };
+  const m: ChatMessage = { ...message, id: id(), createdAt: now() }
   if (isSupabaseConfigured && supabaseAdmin) {
-    await supabaseAdmin.from("messages").insert([m]);
-    await supabaseAdmin
-      .from("chats")
-      .update({ updatedAt: now() })
-      .eq("id", chatId);
+    await supabaseAdmin.from("messages").insert([m])
+    await supabaseAdmin.from("chats").update({ updatedAt: now() }).eq("id", chatId)
   } else {
-    const arr = demo.messages.get(chatId) ?? [];
-    arr.push(m);
-    demo.messages.set(chatId, arr);
-    const c = demo.chats.get(chatId);
+    const arr = demo.messages.get(chatId) ?? []
+    arr.push(m)
+    demo.messages.set(chatId, arr)
+    const c = demo.chats.get(chatId)
     if (c) {
-      c.updatedAt = now();
-      demo.chats.set(chatId, c);
+      c.updatedAt = now()
+      demo.chats.set(chatId, c)
     }
   }
-  return m;
+  return m
 }
 
 /* ------------------------------------------------------------------ */
@@ -228,49 +262,38 @@ export async function addMessage(
 
 export async function listFriendships(userId: string): Promise<Friendship[]> {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("friendships")
-      .select("*")
-      .or(`userId.eq.${userId},friendId.eq.${userId}`);
-    if (error) return [];
-    return (data ?? []) as Friendship[];
+    const { data, error } = await supabase.from("friendships").select("*").or(`userId.eq.${userId},friendId.eq.${userId}`)
+    if (error) return []
+    return (data ?? []) as Friendship[]
   }
-  return Array.from(demo.friendships.values())
-    .flat()
-    .filter((f) => f.userId === userId || f.friendId === userId);
+  return Array.from(demo.friendships.values()).flat().filter((f) => f.userId === userId || f.friendId === userId)
 }
 
-export async function addFriendship(
-  userId: string,
-  friendId: string
-): Promise<Friendship> {
+export async function addFriendship(userId: string, friendId: string): Promise<Friendship> {
   const f: Friendship = {
     id: id(),
     userId,
     friendId,
     status: "pending",
     createdAt: now(),
-  };
-  if (isSupabaseConfigured && supabaseAdmin) {
-    await supabaseAdmin.from("friendships").insert([f]);
-  } else {
-    const arr = demo.friendships.get(userId) ?? [];
-    arr.push(f);
-    demo.friendships.set(userId, arr);
   }
-  return f;
+  if (isSupabaseConfigured && supabaseAdmin) {
+    await supabaseAdmin.from("friendships").insert([f])
+  } else {
+    const arr = demo.friendships.get(userId) ?? []
+    arr.push(f)
+    demo.friendships.set(userId, arr)
+  }
+  return f
 }
 
 export async function acceptFriendship(id: string) {
   if (isSupabaseConfigured && supabaseAdmin) {
-    await supabaseAdmin
-      .from("friendships")
-      .update({ status: "accepted" })
-      .eq("id", id);
+    await supabaseAdmin.from("friendships").update({ status: "accepted" }).eq("id", id)
   } else {
     for (const arr of Array.from(demo.friendships.values())) {
-      const f = arr.find((x) => x.id === id);
-      if (f) f.status = "accepted";
+      const f = arr.find((x) => x.id === id)
+      if (f) f.status = "accepted"
     }
   }
 }
@@ -279,34 +302,21 @@ export async function acceptFriendship(id: string) {
 /*  Direct Messages                                                  */
 /* ------------------------------------------------------------------ */
 
-export async function listDirectMessages(
-  userId: string,
-  otherId: string
-): Promise<DirectMessage[]> {
+export async function listDirectMessages(userId: string, otherId: string): Promise<DirectMessage[]> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase
       .from("direct_messages")
       .select("*")
-      .or(
-        `and(senderId.eq.${userId},receiverId.eq.${otherId}),and(senderId.eq.${otherId},receiverId.eq.${userId})`
-      )
-      .order("createdAt", { ascending: true });
-    if (error) return [];
-    return (data ?? []) as DirectMessage[];
+      .or(`and(senderId.eq.${userId},receiverId.eq.${otherId}),and(senderId.eq.${otherId},receiverId.eq.${userId})`)
+      .order("createdAt", { ascending: true })
+    if (error) return []
+    return (data ?? []) as DirectMessage[]
   }
-  const all = Array.from(demo.dms.values()).flat();
-  return all.filter(
-    (m) =>
-      (m.senderId === userId && m.receiverId === otherId) ||
-      (m.senderId === otherId && m.receiverId === userId)
-  );
+  const all = Array.from(demo.dms.values()).flat()
+  return all.filter((m) => (m.senderId === userId && m.receiverId === otherId) || (m.senderId === otherId && m.receiverId === userId))
 }
 
-export async function addDirectMessage(
-  senderId: string,
-  receiverId: string,
-  content: string
-): Promise<DirectMessage> {
+export async function addDirectMessage(senderId: string, receiverId: string, content: string): Promise<DirectMessage> {
   const m: DirectMessage = {
     id: id(),
     senderId,
@@ -314,15 +324,15 @@ export async function addDirectMessage(
     content,
     read: false,
     createdAt: now(),
-  };
-  if (isSupabaseConfigured && supabaseAdmin) {
-    await supabaseAdmin.from("direct_messages").insert([m]);
-  } else {
-    const arr = demo.dms.get(senderId) ?? [];
-    arr.push(m);
-    demo.dms.set(senderId, arr);
   }
-  return m;
+  if (isSupabaseConfigured && supabaseAdmin) {
+    await supabaseAdmin.from("direct_messages").insert([m])
+  } else {
+    const arr = demo.dms.get(senderId) ?? []
+    arr.push(m)
+    demo.dms.set(senderId, arr)
+  }
+  return m
 }
 
 /* ------------------------------------------------------------------ */
@@ -331,14 +341,11 @@ export async function addDirectMessage(
 
 export async function listAnnouncements(): Promise<SystemAnnouncement[]> {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("system_announcements")
-      .select("*")
-      .order("createdAt", { ascending: false });
-    if (error) return [];
-    return (data ?? []) as SystemAnnouncement[];
+    const { data, error } = await supabase.from("system_announcements").select("*").order("createdAt", { ascending: false })
+    if (error) return []
+    return (data ?? []) as SystemAnnouncement[]
   }
-  return demo.announcements.slice().reverse();
+  return demo.announcements.slice().reverse()
 }
 
 export async function createAnnouncement(
@@ -352,13 +359,13 @@ export async function createAnnouncement(
     content,
     createdBy,
     createdAt: now(),
-  };
-  if (isSupabaseConfigured && supabaseAdmin) {
-    await supabaseAdmin.from("system_announcements").insert([a]);
-  } else {
-    demo.announcements.push(a);
   }
-  return a;
+  if (isSupabaseConfigured && supabaseAdmin) {
+    await supabaseAdmin.from("system_announcements").insert([a])
+  } else {
+    demo.announcements.push(a)
+  }
+  return a
 }
 
 /* ------------------------------------------------------------------ */
@@ -367,14 +374,11 @@ export async function createAnnouncement(
 
 export async function listTools(): Promise<DynamicTool[]> {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("dynamic_tools")
-      .select("*")
-      .order("createdAt", { ascending: false });
-    if (error) return [];
-    return (data ?? []) as DynamicTool[];
+    const { data, error } = await supabase.from("dynamic_tools").select("*").order("createdAt", { ascending: false })
+    if (error) return []
+    return (data ?? []) as DynamicTool[]
   }
-  return demo.tools.slice().reverse();
+  return demo.tools.slice().reverse()
 }
 
 export async function addTool(
@@ -390,19 +394,19 @@ export async function addTool(
     config,
     addedBy,
     createdAt: now(),
-  };
-  if (isSupabaseConfigured && supabaseAdmin) {
-    await supabaseAdmin.from("dynamic_tools").insert([t]);
-  } else {
-    demo.tools.push(t);
   }
-  return t;
+  if (isSupabaseConfigured && supabaseAdmin) {
+    await supabaseAdmin.from("dynamic_tools").insert([t])
+  } else {
+    demo.tools.push(t)
+  }
+  return t
 }
 
 export async function removeTool(id: string) {
   if (isSupabaseConfigured && supabaseAdmin) {
-    await supabaseAdmin.from("dynamic_tools").delete().eq("id", id);
+    await supabaseAdmin.from("dynamic_tools").delete().eq("id", id)
   } else {
-    demo.tools = demo.tools.filter((t) => t.id !== id);
+    demo.tools = demo.tools.filter((t) => t.id !== id)
   }
 }

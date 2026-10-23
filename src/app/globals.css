@@ -3,32 +3,18 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --radius: 0.75rem;
-  }
+  :root { --radius: 0.75rem; }
+  html { scroll-behavior: smooth; }
+  body { background: #09090b; color: #fafafa; }
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #27272a; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
 
-html {
-  scroll-behavior: smooth;
-}
+/* Premium focus ring */
+*:focus-visible { outline: none; box-shadow: 0 0 0 2px #fafafa, 0 0 0 4px #09090b; }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
+/* Markdown-ish */
+.prose-invert a { color: #fafafa; text-decoration: underline; text-underline-offset: 3px; }

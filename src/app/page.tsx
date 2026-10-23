@@ -1,137 +1,100 @@
-import Link from "next/link";
-import {
-  Bot,
-  Zap,
-  Image as ImageIcon,
-  Search,
-  Shield,
-  Users,
-  MessageCircle,
-  Code2,
-  Brain,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link"
+import { Bot, Zap, Image as ImageIcon, Search, Shield, Users, MessageCircle, Code2, Brain, Sparkles, Cpu, HardDrive } from "lucide-react"
 
 export default function LandingPage() {
   const features = [
-    {
-      icon: Bot,
-      title: "Orkestratör Yönlendirici",
-      desc: "Gelen isteği analiz eder ve görevin türüne göre uygun alt modele/ajanı yönlendirir.",
-    },
-    {
-      icon: Code2,
-      title: "Çoklu API Sağlayıcısı",
-      desc: "Google Gemini, OpenAI, Groq, Grok, OpenRouter, DeepSeek, Kimi, Nvidia ve Hugging Face desteği.",
-    },
-    {
-      icon: Zap,
-      title: "Anahtar Döndürme",
-      desc: "Her sağlayıcıdan 3'er anahtar; kotası biten anahtarda otomatik diğerine geçiş.",
-    },
-    {
-      icon: ImageIcon,
-      title: "Görsel Üretimi",
-      desc: "Hugging Face ile metinden görsel üretim ve alternatif model desteği.",
-    },
-    {
-      icon: Search,
-      title: "Web Arama & Gezinme",
-      desc: "Canlı web araması ve belirtilen URL'lerden içerik okuma işleme.",
-    },
-    {
-      icon: Brain,
-      title: "Derin Düşünme",
-      desc: "Karmaşık problemleri adım adım analiz eden reasoning modu.",
-    },
-  ];
-
-  const providers = [
-    "Google Gemini",
-    "OpenAI",
-    "Groq",
-    "Grok (xAI)",
-    "OpenRouter",
-    "DeepSeek",
-    "KIMI",
-    "Nvidia",
-    "Hugging Face",
-  ];
+    { icon: Bot, title: "Agent Orchestrator", desc: "Mesajı analiz eder: köpek çiz→FLUX, kod→GPT-OSS 120B, akıl→Reasoner. Beleşe öncelik." },
+    { icon: Code2, title: "Tüm Beleş Modeller", desc: "Groq GPT-OSS 20B/120B, Gemini 3.8, Qwen 2.5, Claude Sonnet 5.5 — her birine görev verildi." },
+    { icon: Zap, title: "Anahtar Döndürme", desc: "Her sağlayıcı x3 anahtar. Kota bitince otomatik yedeğe geçer, düz moda düşmezse akış bozulmaz." },
+    { icon: ImageIcon, title: "Görsel Cihaz", desc: "HuggingFace FLUX.1 Schnell + SDXL. 'köpek çiz' deyince direkt görsel." },
+    { icon: Search, title: "Web Arama + Drive", desc: "DuckDuckGo canlı arama, URL gezinme, sohbetler Supabase'te, Drive'a tek tık yedek." },
+    { icon: Brain, title: "Siyah/Beyaz Premium", desc: "Cihaz teması — OLED siyah, beyaz kontrast, pürüzsüz akış, normal AI gibi." },
+  ]
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <nav className="border-b border-slate-200 bg-white sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2 text-xl font-bold tracking-tight text-slate-900">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sucuk-600 text-white text-sm font-bold">S</span>
-            Sucuk<span className="text-sucuk-600">Agent</span>
+    <div className="min-h-screen flex flex-col bg-zinc-950 text-zinc-100">
+      <nav className="sticky top-0 z-20 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
+        <div className="mx-auto max-w-7xl px-6 py-3 flex items-center justify-between">
+          <Link href="/dashboard" className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black"><Bot className="h-5 w-5" /></span>
+            <span className="text-lg font-semibold tracking-tight">Sucuk<span className="font-light text-zinc-400">Agent</span></span>
+            <span className="hidden sm:inline rounded-full border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-[10px] tracking-widest text-zinc-400">SİYAH • BEYAZ • CİHAZ</span>
           </Link>
-          <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
-            <Link href="/dashboard" className="hover:text-sucuk-600 transition">Sohbetler</Link>
-            <Link href="/friends" className="hover:text-sucuk-600 transition">Arkadaşlar</Link>
-            <Link href="/settings" className="hover:text-sucuk-600 transition">Ayarlar</Link>
-            <Link href="/login" className="px-4 py-2 rounded-md bg-sucuk-600 text-white hover:bg-sucuk-500 transition">Giriş Yap</Link>
+          <div className="hidden md:flex items-center gap-6 text-sm text-zinc-400">
+            <Link href="/dashboard" className="hover:text-white">Sohbetler</Link>
+            <Link href="/friends" className="hover:text-white">Arkadaşlar</Link>
+            <Link href="/settings" className="hover:text-white">Ayarlar</Link>
+            <Link href="/login" className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black hover:bg-zinc-200">Giriş Yap</Link>
           </div>
         </div>
       </nav>
 
-      <header className="py-12 px-6 text-center bg-slate-50 border-b border-slate-200">
-        <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-slate-900 text-balance">
-          Üst Düzey Yapay Zekâ Agent Sistemi
-        </h1>
-        <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
-          Orchestrator yönlendirici, çoklu API sağlayıcısı, anahtar döndürme ve
-          düz sohbet modu destekli uçtan uca AI agent platformu.
-        </p>
-        <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-          <Link href="/login" className="px-8 py-3 bg-sucuk-600 text-white rounded-xl text-lg font-semibold hover:bg-sucuk-500 transition shadow-lg">
-            Hesapla Giriş Yap
-          </Link>
-          <Link href="#features" className="px-8 py-3 border border-slate-200 rounded-xl text-lg font-semibold text-slate-700 hover:bg-slate-100 transition">
-            Özellikler
-          </Link>
+      <header className="border-b border-zinc-800 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-900 to-zinc-950 px-6 py-16 text-center">
+        <div className="mx-auto max-w-4xl">
+          <div className="mx-auto mb-4 flex items-center justify-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400 w-fit">
+            <Sparkles className="h-3 w-3" /> Agent artık AI seçer • Beleş modellere öncelik
+          </div>
+          <h1 className="text-balance text-4xl md:text-6xl font-semibold tracking-tight">
+            Köpek çiz de, kod yaz de — <span className="bg-white text-black px-2 rounded-lg">cihaz anlar</span>
+          </h1>
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-zinc-400">
+            Orchestrator her mesajı bir göreve atar ve en iyi beleş modeli seçer. Kota bitince sessizce yedeğe geçer. Sohbetler Supabase'te, dostlarınla DM, Drive yedek — hepsi siyah-beyaz premium akış.
+          </p>
+          <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/login" className="rounded-full bg-white px-8 py-3 text-base font-semibold text-black hover:bg-zinc-200">Hesapla Giriş Yap</Link>
+            <Link href="#features" className="rounded-full border border-zinc-800 bg-zinc-900 px-8 py-3 text-base font-medium text-zinc-200 hover:bg-zinc-800">Özellikler</Link>
+          </div>
+          <div className="mt-8 flex flex-wrap justify-center gap-2 text-xs text-zinc-500">
+            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 flex items-center gap-1"><Cpu className="h-3 w-3" /> Agent: köpek çiz → FLUX</span>
+            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 flex items-center gap-1"><Code2 className="h-3 w-3" /> Kod → GPT-OSS 120B (beleş)</span>
+            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 flex items-center gap-1"><HardDrive className="h-3 w-3" /> Supabase + Drive</span>
+          </div>
         </div>
       </header>
 
-      <section id="features" className="py-16 px-6">
-        <h2 className="text-3xl font-bold text-center text-slate-900 mb-2">Mimari Özellikler</h2>
-        <p className="text-center text-slate-500 mb-12">Requirement mimarisiyle geliştirilmiş, modüler ve ölçeklenebilir</p>
-        <div className="max-w-7xl mx-auto grid md:grid-cols-3 gap-6">
-          {features.map((f, i) => {
-            const Icon = f.icon;
-            return (
-              <Card key={i} className="hover:shadow-xl transition border-slate-100">
-                <CardHeader>
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sucuk-100 text-sucuk-600 mb-3">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <CardTitle className="text-lg">{f.title}</CardTitle>
-                </CardHeader>
-                <CardContent>{f.desc}</CardContent>
-              </Card>
-            );
-          })}
+      <section id="features" className="px-6 py-16">
+        <div className="mx-auto max-w-7xl">
+          <h2 className="text-center text-2xl font-semibold tracking-tight">Siyah-beyaz cihaz gibi</h2>
+          <p className="text-center text-sm text-zinc-500 mt-1">Normal AI akıcılığında, her beleş modele bir görev</p>
+          <div className="mt-10 grid md:grid-cols-3 gap-4">
+            {features.map((f, i) => {
+              const Icon = f.icon
+              return (
+                <div key={i} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 hover:border-zinc-700 transition">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-black mb-3"><Icon className="h-5 w-5" /></div>
+                  <h3 className="font-medium text-white">{f.title}</h3>
+                  <p className="mt-1 text-sm text-zinc-400">{f.desc}</p>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </section>
 
-      <section className="py-16 px-6 bg-slate-100 border-t border-slate-200">
-        <h2 className="text-3xl font-bold text-center text-slate-900 mb-2">API Sağlayıcıları</h2>
-        <p className="text-center text-slate-500 mb-10">Her sağlayıcıdan 3'er API anahtarı, otomatik kota döndürmesi</p>
-        <div className="max-w-4xl mx-auto grid md:grid-cols-3 gap-3">
-          {providers.map((p, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-white border border-slate-200 text-sm font-medium text-slate-700">
-              <span className="w-2 h-2 rounded-full bg-green-400"></span>
-              {p}
-            </div>
-          ))}
+      <section className="border-t border-zinc-800 bg-zinc-900/50 px-6 py-12">
+        <div className="mx-auto max-w-5xl">
+          <h3 className="text-center text-lg font-semibold">Beleş modellere görev dağılımı</h3>
+          <div className="mt-6 grid md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+            {[
+              ["Genel", "GPT-OSS 20B • Gemini 3.8 • Qwen 2.5"],
+              ["Kod", "GPT-OSS 120B • Claude Sonnet 5.5 • Qwen Coder"],
+              ["Görsel", "FLUX.1 Schnell • SDXL (HF)"],
+              ["Akıl", "DeepSeek Reasoner • Nemotron 49B"],
+              ["Arama", "Groq + DuckDuckGo • Llama 3.3 Free"],
+              ["Çeviri/Özet", "Gemini 3.8 Lite • Moonshot 8K"],
+            ].map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                <span className="font-medium text-zinc-200">{k}</span>
+                <span className="text-zinc-500 text-xs">{v}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      <footer className="py-10 px-6 border-t border-slate-200 bg-white text-center text-sm text-slate-500">
-        Sucuk-Agent • Yönetici: Sucuk9977 • Kullanıcı: Pirensine •
-        Veritabanı: Supabase • Barındırma: Vercel • Google Drive yedekleme
+      <footer className="border-t border-zinc-800 bg-zinc-950 px-6 py-8 text-center text-xs text-zinc-500">
+        Sucuk-Agent • Siyah/Beyaz Cihaz • Yönetici: Sucuk9977 / SigmaAkif2013 • Kullanıcı: Pirensine / 2.0.2.7.F.Z.3102 • Supabase + Vercel + Drive yedek
       </footer>
     </div>
-  );
+  )
 }

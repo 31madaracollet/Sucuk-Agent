@@ -58,3 +58,8 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Onaylanamadı: " + (err?.message ?? String(err)) }, { status: 500 });
   }
 }
+
+export async function PUT(req: Request) {
+  // Alias for PATCH — frontend sometimes uses PUT
+  return PATCH(req);
+}

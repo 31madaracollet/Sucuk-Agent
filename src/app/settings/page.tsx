@@ -1,117 +1,93 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import {
-  Shield,
-  Key,
-  Bot as BotIcon,
-  Database,
-  Link as LinkIcon,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react"
+import { Database, Shield } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+
+const MODEL_TASKS: Record<string, string> = {
+  google: "Genel / Çeviri — Gemini 3.8 Flash (beleş)",
+  groq: "Kod & Arama — GPT-OSS 120B/20B (beleş)",
+  openrouter: "Kod — Claude Sonnet 5.5",
+  huggingface: "Görsel — FLUX.1/SDXL + Genel Qwen (beleş)",
+  deepseek: "Akıl — Reasoner",
+  kimi: "Kod uzun bağlam — Moonshot",
+  nvidia: "Akıl — Nemotron",
+  openai: "Genel — GPT-4o",
+}
 
 export default function SettingsPage() {
-  const [providers, setProviders] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [providers, setProviders] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch("/api/providers", { credentials: "include" })
       .then((r) => r.json())
       .then((data) => {
-        setProviders(data);
-        setLoading(false);
-      });
-  }, []);
+        setProviders(data)
+        setLoading(false)
+      })
+  }, [])
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Ayarlar</h1>
-          <p className="text-slate-600">Sistem yapılandırması ve API sağlayıcı durumu.</p>
-        </div>
+    <div className="mx-auto max-w-4xl px-4 md:px-6 py-8 space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">Ayarlar</h1>
+        <p className="text-sm text-zinc-500">Siyah-beyaz cihaz, beleş öncelikli modeller, Supabase + Drive</p>
       </div>
 
-      <Card>
+      <Card className="border-zinc-800 bg-zinc-900 text-zinc-100">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5" /> API Sağlayıcı Durumu
-          </CardTitle>
+          <CardTitle className="flex items-center gap-2 text-white"><Database className="h-5 w-5" /> Sağlayıcı Durumu</CardTitle>
+          <p className="text-xs text-zinc-500">Agent kota bitince sıradaki beleşe geçer. Düz modda sen seçersin, yedek otomatik.</p>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <p className="text-slate-500">Yükleniyor...</p>
-          ) : providers ? (
+          {loading ? <p className="text-zinc-500">Yükleniyor...</p> : providers ? (
             <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm text-slate-600 border-b pb-2">
-                <span>Kimlik durumu</span>
-                <Badge variant={providers.authenticated ? "success" : "danger"}>
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-2 text-sm">
+                <span className="text-zinc-400">Kimlik</span>
+                <Badge variant={providers.authenticated ? "success" : "danger"} className={providers.authenticated ? "bg-white text-black" : "bg-red-950 text-red-200 border-red-900"}>
                   {providers.authenticated ? "Oturum açtı" : "Oturum yok"}
                 </Badge>
               </div>
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-slate-500 uppercase">
-                  Sağlayıcılar (anahtar sayısı)
-                </p>
-                {Object.entries(providers.keyCounts || {}).map(([p, c]) => (
-                  <div key={p} className="flex items-center justify-between p-2 rounded bg-slate-50">
-                    <span className="text-sm text-slate-700 capitalize">{p}</span>
-                    <span className="text-xs font-mono text-slate-500">
-                      {String(c)} anahtar
-                    </span>
+              <p className="text-xs font-semibold tracking-widest text-zinc-500">SAĞLAYICILAR — ANAHTAR SAYISI & GÖREV</p>
+              {Object.entries(providers.keyCounts || {}).map(([p, c]) => (
+                <div key={p} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                  <div>
+                    <span className="text-sm font-medium text-white capitalize">{p}</span>
+                    <p className="text-xs text-zinc-500">{MODEL_TASKS[p] || ""}</p>
                   </div>
-                ))}
-                {Object.keys(providers.keyCounts || {}).length === 0 && (
-                  <p className="text-sm text-slate-500">
-                    Yapılandırılmış API anahtarı yok. Ortam değişkenlerini ekleyin.
-                  </p>
-                )}
-              </div>
-              <p className="text-xs text-slate-400 mt-2">
-                Kotaları biten sağlayıcılarda otomatik diğer anahtara geçiş yapılır;
-                tümleri bitince "Üzgünüm, limit doldu." uyarısı verilir ve Düz Sohbet
-                Moduna geçilir.
-              </p>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-mono font-bold text-black">{String(c)} anahtar</span>
+                </div>
+              ))}
+              {Object.keys(providers.keyCounts || {}).length === 0 && <p className="text-sm text-zinc-500">Anahtar yok. Vercel env ekle.</p>}
+              <p className="text-xs text-zinc-500">Tüm beleş modellere görev verildi: Groq 20B (genel), Groq 120B (kod/arama), FLUX (görsel), Gemini (çeviri), Qwen (genel).</p>
             </div>
-          ) : (
-            <p className="text-slate-500">Veri alınamadı.</p>
-          )}
+          ) : <p className="text-zinc-500">Veri alınamadı.</p>}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" /> Hesap Bilgileri
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-3 rounded bg-slate-50 border border-slate-100">
-              <div className="text-xs text-slate-500 uppercase">Tanımlı Hesaplar</div>
-              <div className="mt-1 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Sucuk9977</span>
-                  <Badge variant="secondary">Yönetici</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Pirensine</span>
-                  <Badge variant="default">Kullanıcı</Badge>
-                </div>
-              </div>
+      <Card className="border-zinc-800 bg-zinc-900 text-zinc-100">
+        <CardHeader><CardTitle className="flex items-center gap-2 text-white"><Shield className="h-5 w-5" /> Cihaz Teması</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+              <p className="text-xs tracking-widest text-zinc-500">TEMA</p>
+              <p className="text-sm font-medium text-white mt-1">Siyah • Beyaz • Cihaz</p>
+              <p className="text-xs text-zinc-500">OLED siyah (#09090b), beyaz kontrast, yumuşak akış — normal AI gibi.</p>
             </div>
-            <div className="p-3 rounded bg-slate-50 border border-slate-100">
-              <div className="text-xs text-slate-500 uppercase">Sohbet Geçmişi</div>
-              <div className="mt-1 text-sm text-slate-600">
-                Tüm sohbetler Supabase veritabanına kaydedilir ve Google Drive
-                üzerinden yedeklenir.
-              </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+              <p className="text-xs tracking-widest text-zinc-500">ORTAK KULLANIM</p>
+              <p className="text-sm font-medium text-white mt-1">Herkes aynı Agent</p>
+              <p className="text-xs text-zinc-500">Admin kullanıcı ekler/çıkarır, arkadaşlar DM, duyurular herkese.</p>
             </div>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+            <p className="text-xs tracking-widest text-zinc-500">YEDEK</p>
+            <p className="text-sm text-zinc-400 mt-1">Sohbetler Supabase'e yazılır, geçmiş kalıcı. Dashboard & DM'de "Drive'a Yedekle" ile JSON indir → Google Drive'a yükle.</p>
           </div>
         </CardContent>
       </Card>
     </div>
-  );
+  )
 }
