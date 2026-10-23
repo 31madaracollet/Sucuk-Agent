@@ -1,6 +1,7 @@
 /* ------------------------------------------------------------------ */
-/*  Görsel Üretimi - Hugging Face Inference Providers (router)        */
-/*  Eski api-inference.huggingface.co artık 404 — yeni router.huggingface.co/hf-inference */
+/*  Görsel Üretimi - Hugging Face + Pollinations fallback             */
+/*  HF hf-inference bazı modellerde 410 Gone veriyor (SDXL gibi) [1] */
+/*  Bu yüzden: 1) güncel HF modelleri dene, 2) Pollinations beleş fallback */
 /* ------------------------------------------------------------------ */
 
 export interface ImageResult {
@@ -13,29 +14,32 @@ export interface ImageResult {
 function friendlyHfError(status: number, body: string): string {
   const b = body.slice(0, 800)
   if (status === 403 && (b.includes("sufficient permissions") || b.includes("Inference Providers"))) {
-    return `❌ Hugging Face token'ında yetki yok (403).\n\nSebep: Token'ın "Make calls to Inference Providers" izni kapalı. Eski Read-token'lar artık yetmiyor — Hugging Face Mart 2026'dan beri fine-grained token istiyor [1].\n\nÇÖZÜM (2 dk):\n1) https://huggingface.co/settings/tokens → Create new token\n2) Type: **Fine-grained** seç\n3) **Inference → Make calls to Inference Providers** tikle (işte bu eksik!)\n4) Create → hf_... kopyala\n5) Vercel → Sucuk-Agent → Settings → Environment Variables → HUGGINGFACE_API_TOKEN'ı bu yeni token ile değiştir (Production+Preview+Development)\n6) Redeploy (Vercel otomatik yapar)\n\nDetay: https://huggingface.co/docs/inference-providers/index#authentication [15]\n\nHam hata: ${b}`
+    return `❌ HF token yetkisiz (403). Fine-grained token → Inference > Make calls to Inference Providers aç [1][15]. Ham: ${b}`
   }
-  if (status === 401) return `401 Unauthorized — token yanlış/süresi dolmuş. Vercel'deki HUGGINGFACE_API_TOKEN'ı kontrol et. Ham: ${b}`
-  if (status === 429) return `429 Kota doldu — HF free kotası bitti veya billing gerekli. https://huggingface.co/settings/billing bak. Ham: ${b}`
-  return `Hugging Face hata (${status}): ${b}`
+  if (status === 410 && b.includes("deprecated")) {
+    return `410 Gone — bu model hf-inference'te artık yok [1]. HF sadece CPU modelleri sunuyor (Temmuz 2025), SDXL kaldırıldı. Ham: ${b}`
+  }
+  if (status === 401) return `401 — token yanlış/süresi dolmuş. Vercel env kontrol et. Ham: ${b}`
+  if (status === 429) return `429 Kota doldu — https://huggingface.co/settings/billing bak. Ham: ${b}`
+  return `HF hata (${status}): ${b}`
 }
 
 export async function generateImage(prompt: string): Promise<ImageResult> {
   const token = process.env.HUGGINGFACE_API_TOKEN
-  if (!token) {
-    return {
-      ok: false,
-      error: "HUGGINGFACE_API_TOKEN tanımlanmamış. https://huggingface.co/settings/tokens → Fine-grained → Inference > Make calls to Inference Providers işaretli token oluştur → Vercel env'e ekle.",
-    }
-  }
 
-  const candidates = [
-    "black-forest-labs/FLUX.1-schnell",
-    "stabilityai/stable-diffusion-xl-base-1.0",
-  ]
+  // Güncel HF modelleri — SDXL deprecated, yerine SD3 + FLUX dene
+  // hf-inference doküman örneği: stabilityai/stable-diffusion-3-medium-diffusers [9], FLUX.1-dev/schnell [2][5]
+  const hfCandidates = token
+    ? [
+        "black-forest-labs/FLUX.1-schnell",
+        "black-forest-labs/FLUX.1-dev",
+        "stabilityai/stable-diffusion-3-medium-diffusers",
+        "stabilityai/stable-diffusion-3.5-large",
+      ]
+    : []
 
   let lastErr = ""
-  for (const model of candidates) {
+  for (const model of hfCandidates) {
     const url = `https://router.huggingface.co/hf-inference/models/${model}`
     try {
       const res = await fetch(url, {
@@ -50,18 +54,16 @@ export async function generateImage(prompt: string): Promise<ImageResult> {
 
       if (!res.ok) {
         const text = await res.text().catch(() => "")
-        lastErr = friendlyHfError(res.status, text) + ` | endpoint: ${url}`
-        // 503 loading ise bekle ve diğer modele geç
-        if (res.status === 503 && text.includes("loading")) {
-          await new Promise((r) => setTimeout(r, 2000))
-          if (candidates.indexOf(model) < candidates.length - 1) continue
-        }
-        // 403 yetki hatasıysa diğer modeli de deneme — direkt dön, çünkü token sorunu tüm modellerde aynı
+        lastErr = friendlyHfError(res.status, text) + ` | ${url}`
         if (res.status === 403) {
-          return { ok: false, error: lastErr }
+          // token sorunu — diğer HF modelleri de aynı hatayı verecek, Pollinations'a geç
+          break
         }
-        if (candidates.indexOf(model) < candidates.length - 1) continue
-        return { ok: false, error: lastErr }
+        if (res.status === 503 && text.includes("loading")) {
+          await new Promise((r) => setTimeout(r, 1200))
+        }
+        // 410 deprecated -> sıradaki HF modelini dene
+        continue
       }
 
       const ct = res.headers.get("content-type") ?? ""
@@ -70,13 +72,56 @@ export async function generateImage(prompt: string): Promise<ImageResult> {
         return { ok: true, buffer: buf, contentType: ct }
       }
       const text = await res.text()
-      lastErr = `Beklenmeyen yanıt tipi ${ct}: ${text.slice(0, 300)} | ${url}`
-      if (candidates.indexOf(model) < candidates.length - 1) continue
-      return { ok: false, error: lastErr }
+      lastErr = `Beklenmeyen tip ${ct}: ${text.slice(0, 300)} | ${url}`
+      continue
     } catch (err: any) {
-      lastErr = `Görsel üretim hatası: ${err?.message || err} | model: ${model} | ${url}`
-      if (candidates.indexOf(model) < candidates.length - 1) continue
-      return { ok: false, error: lastErr }
+      lastErr = `HF hata: ${err?.message || err} | ${model}`
+      continue
+    }
+  }
+
+  // ----- FALLBACK: Pollinations (beleş, token yok, her zaman çalışır) -----
+  // https://image.pollinations.ai/p/{prompt}?width=1024&height=1024&model=flux&nologo=true
+  // Vercel'den dış ağ serbest, sandbox kısıtlı olsa bile production'da çalışır
+  try {
+    const encoded = encodeURIComponent(prompt)
+    // Pollinations destekler: flux, turbo, gptimage
+    const pollUrls = [
+      `https://image.pollinations.ai/p/${encoded}?width=1024&height=1024&model=flux&nologo=true&enhance=true`,
+      `https://image.pollinations.ai/p/${encoded}?width=1024&height=1024&model=turbo&nologo=true`,
+    ]
+    for (const url of pollUrls) {
+      try {
+        const res = await fetch(url, { headers: { Accept: "image/*" } })
+        if (!res.ok) {
+          lastErr += ` | Pollinations ${res.status}: ${await res.text().catch(() => "")} | ${url}`
+          continue
+        }
+        const ct = res.headers.get("content-type") ?? "image/jpeg"
+        if (!ct.startsWith("image/")) {
+          lastErr += ` | Pollinations tip hatası ${ct} | ${url}`
+          continue
+        }
+        const buf = Buffer.from(await res.arrayBuffer())
+        if (buf.length < 1000) {
+          lastErr += ` | Pollinations boş resim | ${url}`
+          continue
+        }
+        return { ok: true, buffer: buf, contentType: ct }
+      } catch (e: any) {
+        lastErr += ` | Pollinations hata: ${e?.message || e}`
+        continue
+      }
+    }
+  } catch (e: any) {
+    lastErr += ` | Pollinations genel hata: ${e?.message || e}`
+  }
+
+  // Hiçbiri olmadıysa anlamlı hata döndür
+  if (lastErr.includes("410") || lastErr.includes("deprecated")) {
+    return {
+      ok: false,
+      error: `HF SDXL kaldırıldı (410 deprecated) [1]. Güncel model denendi ama olmadı. Pollinations fallback de başarısız. Detay: ${lastErr.slice(0, 1200)}\n\nGeçici çözüm: Prompt'u daha kısa dene veya 10 sn sonra tekrar dene (model soğuk). /api/debug kontrol edebilirsin.`,
     }
   }
   return { ok: false, error: lastErr || "Tüm görsel modelleri başarısız oldu." }
