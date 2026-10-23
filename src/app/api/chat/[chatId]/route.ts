@@ -23,6 +23,7 @@ const DEFAULT_MODEL_FOR_PROVIDER: Record<ProviderId, string> = {
   kimi: "moonshot-v1-8k",
   nvidia: "meta/llama-3.3-70b-instruct",
   openai: "gpt-4o-mini",
+  grok: "grok-2-latest",
   google: "gemini-2.0-flash",
   huggingface: "HuggingFaceH4/zephyr-7b-beta",
 };
