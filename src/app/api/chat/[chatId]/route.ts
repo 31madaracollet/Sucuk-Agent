@@ -135,9 +135,16 @@ export async function POST(req: Request, { params }: { params: { chatId: string 
       const systemContent = `Sen Sucuk-Agent'sın — siyah-beyaz premium cihaz temasıyla çalışan, Türkçe, net ve güvenli bir yapay zekâsın. Görevin: ${decision.agent}. ${decision.reason}. Beleş modellere öncelik ver, kota biterse sakin kal ve alternatif öner.`
 
       if (decision.agent === "search") {
-        const results = await webSearch(content, 5)
-        if (results.length > 0) {
-          toolOutput = results.map((r, i) => `${i + 1}. ${r.title}\n${r.url}\n${r.snippet}`).join("\n\n")
+        try {
+          const results = await webSearch(content, 5)
+          if (results.length > 0) {
+            toolOutput = results.map((r, i) => `${i + 1}. ${r.title}\n${r.url}\n${r.snippet}`).join("\n\n")
+          } else {
+            // Boş dönse bile chat kaybolmasın — arama denendi ama sonuç yok diye not et
+            toolOutput = `Web araması denendi ama sonuç dönmedi (DuckDuckGo ${new Date().toISOString().slice(0,10)}).`
+          }
+        } catch (e: any) {
+          toolOutput = `Web araması hatası: ${e?.message || String(e)}`
         }
       }
 
