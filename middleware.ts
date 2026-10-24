@@ -24,7 +24,8 @@ export function middleware(req: NextRequest) {
       if (payload) {
         try {
           // base64url -> base64
-          const b64 = payload.replace(/-/g,"+").replace(/_/g,"/")
+          let b64 = payload.replace(/-/g,"+").replace(/_/g,"/")
+          b64 += "=".repeat((4 - b64.length % 4) % 4)
           const json = atob(b64)
           const data = JSON.parse(json)
           if (data.u && data.r) user = { id: data.id || `dyn-${data.u}`, username: data.u, role: data.r }

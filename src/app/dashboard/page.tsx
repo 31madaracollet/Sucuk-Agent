@@ -24,17 +24,8 @@ export default function DashboardPage() {
     setChats(cData.chats ?? [])
     setAnnouncements(aData.announcements ?? [])
     setLoading(false)
-    // 8. Uygulama açılışında otomatik yeni sohbet — eğer hiç sohbet yoksa
-    if((cData.chats ?? []).length === 0 && !autoCreating && cRes.ok){
-      setAutoCreating(true)
-      try{
-        const res = await fetch("/api/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ title:"Yeni Sohbet" }), credentials:"include"})
-        const data = await res.json()
-        if(data.chat){
-          window.location.href = `/chat/${data.chat.id}`
-        }
-      }catch{}
-    }
+    // Otomatik yeni sohbet ARTIK otomatik yönlendirme yapmıyor — kullanıcı geri basmadan geri gitmeyecek
+    // Sadece boş ise bilgi göster, kullanıcı isterse oluştursun
   }
 
   async function createChat() {
@@ -49,7 +40,7 @@ export default function DashboardPage() {
       if (!res.ok){ alert(data.error || "Oluşturulamadı - giriş yap"); return }
       setChats([data.chat, ...chats])
       setNewTitle("")
-      window.location.href = `/chat/${data.chat.id}`
+      window.location.href = `/chat/${data.chat.id}?fullscreen=1`
     }catch(e:any){ alert("Hata: "+e.message)}
   }
 
@@ -164,7 +155,7 @@ export default function DashboardPage() {
             {chats.map((chat) => (
               <div
                 key={chat.id}
-                onClick={() => (window.location.href = `/chat/${chat.id}`)}
+                onClick={() => (window.location.href = `/chat/${chat.id}?fullscreen=1`)}
                 className="group flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3 hover:border-white hover:bg-zinc-900 cursor-pointer transition"
               >
                 <div className="flex items-center gap-3 min-w-0">

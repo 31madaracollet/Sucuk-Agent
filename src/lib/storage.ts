@@ -231,6 +231,20 @@ export async function ensureDemoProfiles() {
   } catch {}
 }
 
+export async function ensureDemoIntegrations(userId: string){
+  const existing = await listTools()
+  const mine = existing.filter(t=> t.addedBy===userId || t.addedBy==="system-embedded")
+  if(mine.length>0) return
+  const defaults = [
+    { provider:"supabase", name:"Supabase (Gömülü)", desc:"Kalıcı DB — varsayılan bağlı" },
+    { provider:"google_drive", name:"Google Drive (Gömülü)", desc:"Oto yedek — varsayılan" },
+    { provider:"github", name:"GitHub (Gömülü)", desc:"Repo — gömülü token" },
+  ]
+  for(const d of defaults){
+    await addTool(d.name, d.desc, { provider: d.provider, embedded:true, connectedAt: new Date().toISOString() }, "system-embedded")
+  }
+}
+
 export function seedDemoAccounts() {
   const admin: Profile = {
     id: "demo-admin-001",

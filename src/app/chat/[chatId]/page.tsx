@@ -46,26 +46,49 @@ export default function ChatPage() {
   const [typedContent, setTypedContent] = useState<Record<string,string>>({})
   const [attachedFile, setAttachedFile] = useState<{ name:string, dataUrl:string, type:string } | null>(null)
   const [recording, setRecording] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
   async function load() {
-    const res = await fetch(`/api/chat/${chatId}`, { credentials: "include" })
-    if (!res.ok) {
-      router.push("/dashboard")
-      return
+    try {
+      const res = await fetch(`/api/chat/${chatId}`, { credentials: "include" })
+      if (!res.ok) {
+        const j = await res.json().catch(()=>({error:"Bilinmeyen hata"}))
+        setLoadError(j.error || `Yüklenemedi (${res.status}) — tekrar dene veya geri dön`)
+        return
+      }
+      const data = await res.json()
+      setChat(data.chat)
+      setMessages(data.messages ?? [])
+      setLoadError(null)
+    } catch (e:any) {
+      setLoadError("Baglanti hatasi: " + e.message)
     }
-    const data = await res.json()
-    setChat(data.chat)
-    setMessages(data.messages ?? [])
   }
 
   useEffect(() => {
     load()
-    const id = setInterval(load, 7000)
+    const id = setInterval(async ()=>{
+      try{
+        const res = await fetch(`/api/chat/${chatId}`, { credentials: "include" })
+        if(!res.ok) return
+        const data = await res.json()
+        setChat(data.chat)
+        setMessages(data.messages ?? [])
+      }catch{}
+    }, 7000)
     return () => clearInterval(id)
   }, [chatId])
+
+  useEffect(()=>{
+    try{
+      const sp = new URLSearchParams(window.location.search)
+      if(sp.get("fullscreen")==="1") setIsFullscreen(true)
+    }catch{}
+  },[])
 
   // daktilo efekti
   useEffect(()=>{
@@ -268,10 +291,10 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-zinc-950 text-zinc-100">
-      <Navbar/>
+      {!isFullscreen && <Navbar/>}
       <div className="flex flex-1">
-        <Sidebar/>
-        <div className="flex-1 flex flex-col min-h-[calc(100vh-56px)]">
+        {!isFullscreen && <Sidebar/>}
+        <div className={`flex-1 flex flex-col ${isFullscreen ? "min-h-screen" : "min-h-[calc(100vh-56px)]"}`}>
       {/* ÜST BAR */}
       <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
@@ -292,6 +315,8 @@ export default function ChatPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button onClick={()=>setIsFullscreen(v=>!v)} className="rounded-full bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white hover:text-black">{isFullscreen ? "⬙ Küçült" : "⛶ Tam Ekran"}</button>
+            <button onClick={()=>router.push("/dashboard")} className="rounded-full bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white hover:text-black">← Geri</button>
             <span className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black"><Sparkles className="h-3 w-3" /> AGENT</span>
             <span className={`hidden lg:inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${limitExhausted ? "border-red-900 bg-red-950 text-red-300" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}>
               {limitExhausted ? <AlertCircle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />} {limitExhausted ? "Yedek" : "Otomatik"}
@@ -305,6 +330,17 @@ export default function ChatPage() {
         </div>
       </div>
 
+      {loadError && (
+        <div className="mx-auto w-full max-w-3xl px-4 pt-3">
+          <div className="flex items-center justify-between rounded-xl border border-red-900 bg-red-950 px-3 py-3 text-sm text-red-200">
+            <span>{loadError}</span>
+            <div className="flex gap-2 ml-2 shrink-0">
+              <button onClick={load} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-black">Tekrar Dene</button>
+              <button onClick={()=>router.push("/dashboard")} className="rounded-full bg-zinc-900 border border-zinc-700 px-3 py-1 text-xs text-white">Geri</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* MESAJLAR */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">

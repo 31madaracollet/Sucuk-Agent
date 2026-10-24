@@ -72,7 +72,7 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
       const res = await fetch("/api/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ title:"Yeni Sohbet" }), credentials:"include"})
       const data = await res.json()
       if(!res.ok){ alert(data.error || "Oluşturulamadı - yeniden giriş yap"); return }
-      if(data.chat) router.push(`/chat/${data.chat.id}`)
+      if(data.chat) router.push(`/chat/${data.chat.id}?fullscreen=1`)
       loadChats()
     }catch(e:any){ alert("Hata: "+e.message) }
   }
@@ -109,7 +109,7 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
                   <p className="text-xs tracking-widest text-zinc-500">SOHBET GEÇMİŞİ</p>
                   <div className="mt-2 space-y-1">
                     {chats.slice(0,15).map((c:any)=>(
-                      <Link key={c.id} href={`/chat/${c.id}`} onClick={()=>setMobileOpen(false)} className={`block rounded-xl px-3 py-3 text-sm ${pathname===`/chat/${c.id}` ? "bg-white text-black":"bg-zinc-900 text-zinc-300"}`}>
+                      <Link key={c.id} href={`/chat/${c.id}?fullscreen=1`} onClick={()=>setMobileOpen(false)} className={`block rounded-xl px-3 py-3 text-sm ${pathname===`/chat/${c.id}` ? "bg-white text-black":"bg-zinc-900 text-zinc-300"}`}>
                         {c.title}
                       </Link>
                     ))}
@@ -165,7 +165,7 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
           <p className="text-xs tracking-widest text-zinc-500 flex items-center gap-2"><MessageCircle className="h-3 w-3"/> SOHBET GEÇMİŞİ</p>
           <div className="mt-2 space-y-1">
             {chats.length===0 ? <p className="text-xs text-zinc-600">Henüz sohbet yok — otomatik yeni sohbet başlatılacak</p> : chats.slice(0,20).map((c:any)=>(
-              <Link key={c.id} href={`/chat/${c.id}`} className={`block rounded-xl px-3 py-2 text-sm truncate ${pathname===`/chat/${c.id}` ? "bg-white text-black":"bg-zinc-900 text-zinc-300 hover:bg-zinc-800"}`}>
+              <Link key={c.id} href={`/chat/${c.id}?fullscreen=1`} className={`block rounded-xl px-3 py-2 text-sm truncate ${pathname===`/chat/${c.id}` ? "bg-white text-black":"bg-zinc-900 text-zinc-300 hover:bg-zinc-800"}`}>
                 {c.title}
               </Link>
             ))}

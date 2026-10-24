@@ -22,26 +22,24 @@ export default function WorkspacePage() {
   const [newProvider, setNewProvider] = useState("google_drive")
   const [newName, setNewName] = useState("")
 
+  const [userName, setUserName] = useState<string>("")
   async function load() {
     const r = await fetch("/api/integrations", { credentials: "include" })
     const j = await r.json()
     setIntegrations(j.integrations ?? [])
     try {
-      const m = document.cookie.match(/sucuk_session=([^;]+)/)
-      if (m) {
-        const payload = JSON.parse(atob(m[1].split(".")[0].replace(/-/g,"+").replace(/_/g,"/")))
-        setIsAdmin(payload.r==="admin")
-      }
+      const me = await fetch("/api/auth/me", { credentials: "include" }).then(x=>x.json())
+      if(me.authenticated) { setIsAdmin(me.user.role==="admin"); setUserName(me.user.username) }
     } catch {}
   }
   useEffect(()=>{ load() }, [])
 
   async function connect() {
-    if (!isAdmin) { alert("Sadece admin bağlayabilir (Sucuk9977)"); return }
     if (!newName.trim()) { alert("İsim gir"); return }
     const r = await fetch("/api/integrations", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ provider: newProvider, name: newName, config: { connectedAt: new Date().toISOString() } }), credentials:"include" })
     const j = await r.json()
     if (!r.ok) { alert(j.error); return }
+    alert(j.integration ? `Baglandi: ${j.integration.name} (kullaniciya ozel: ${userName})` : "Baglandi")
     setNewName("")
     load()
   }
@@ -67,7 +65,7 @@ export default function WorkspacePage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-2"><Plug className="h-5 w-5" /> Workspace & Entegrasyonlar</h1>
-          <p className="text-sm text-zinc-500">GitHub/Supabase/Drive/Notion/Haritalar/Workspace/TeraBox — Agent hepsini kullanır. Çoklu araç altyapısı hazır.</p>
+          <p className="text-sm text-zinc-500">GitHub/Supabase/Drive/Notion/Haritalar/Workspace/TeraBox — kullaniciya ozel baglama + kor gomulu hesaplar. Agent hepsini kullanir.</p>
         </div>
         <Button variant="outline" className="rounded-full" onClick={()=>window.open("/friends","_blank")}><ExternalLink className="h-4 w-4" /> Arkadaşlarla Proje</Button>
       </div>
@@ -91,9 +89,8 @@ export default function WorkspacePage() {
         })}
       </div>
 
-      {isAdmin ? (
-        <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2">Yeni Entegrasyon Bağla (sadece admin)</CardTitle></CardHeader>
+      <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2">Yeni Entegrasyon Bagla — Kullaniciya Ozel {userName && `(${userName})`}</CardTitle><p className="text-xs text-zinc-500">Her kullanici kendi hesabini baglar — baglanti sana ozel, istersen kor (gomulu) hesap uzerine yazar. Eskiden admin-only idi, simdi herkes baglayabilir.</p></CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             <select value={newProvider} onChange={e=>setNewProvider(e.target.value)} className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white">
               <option value="supabase">Supabase</option>
@@ -107,12 +104,13 @@ export default function WorkspacePage() {
               <option value="vercel">Vercel</option>
               <option value="huggingface">HuggingFace ek</option>
               <option value="nvidia">NVIDIA ek</option>
+              <option value="slack">Slack</option>
+              <option value="discord">Discord</option>
             </select>
-            <Input placeholder="İsim (örn. Sucuk Drive, GitHub Repo)" value={newName} onChange={e=>setNewName(e.target.value)} className="flex-1 min-w-[200px]" />
-            <Button onClick={connect} className="rounded-full bg-white text-black">Bağla</Button>
+            <Input placeholder="Isim (orn. Kendi Drive, GitHub Repo)" value={newName} onChange={e=>setNewName(e.target.value)} className="flex-1 min-w-[200px]" />
+            <Button onClick={connect} className="rounded-full bg-white text-black">Bagla — Sana Ozel</Button>
           </CardContent>
         </Card>
-      ) : <p className="text-xs text-zinc-600">Sadece admin (Sucuk9977) yeni entegrasyon ekleyebilir — sen kullanabilirsin.</p>}
 
       <Card>
         <CardHeader><CardTitle>Bağlı Entegrasyonlar ({integrations.length})</CardTitle></CardHeader>
