@@ -38,9 +38,30 @@ export default function ChatPage() {
   async function load(){
     try{
       const res = await fetch(`/api/chat/${chatId}`,{credentials:"include"})
-      if(!res.ok){ const j=await res.json().catch(()=>({error:"Bilinmeyen hata"})); setLoadError(j.error||`Yüklenemedi (${res.status})`); return }
+      if(!res.ok){
+        const j=await res.json().catch(()=>({error:"Bilinmeyen hata"}));
+        // localStorage fallback — server 404 ama dashboard'da vardı
+        try{
+          const lsChat=localStorage.getItem(`sucuk:chat:${chatId}`)
+          const lsChats=localStorage.getItem("sucuk:chats")
+          let fallbackChat=null
+          if(lsChat) fallbackChat=JSON.parse(lsChat)
+          else if(lsChats){ const arr=JSON.parse(lsChats); fallbackChat=arr.find((c:any)=>c.id===chatId) }
+          if(fallbackChat){
+            setChat(fallbackChat); 
+            const lsMsgs=localStorage.getItem(`sucuk:msgs:${chatId}`)
+            setMessages(lsMsgs?JSON.parse(lsMsgs):[]); 
+            setLoadError(null);
+            // sunucuya tekrar oluşturmayı dene (sessiz)
+            fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:fallbackChat.title}),credentials:"include"}).catch(()=>{})
+            return
+          }
+        }catch{}
+        setLoadError((j.error||`Yüklenemedi (${res.status})`) + (j.debug ? ` — ${JSON.stringify(j.debug)}` : "")); return
+      }
       const data=await res.json()
       setChat(data.chat); setMessages(data.messages??[]); setLoadError(null)
+      try{ localStorage.setItem(`sucuk:chat:${chatId}`, JSON.stringify(data.chat)); localStorage.setItem(`sucuk:msgs:${chatId}`, JSON.stringify(data.messages??[])); const ls=localStorage.getItem("sucuk:chats"); const arr=ls?JSON.parse(ls):[]; if(!arr.find((c:any)=>c.id===data.chat.id)){ arr.unshift(data.chat); localStorage.setItem("sucuk:chats", JSON.stringify(arr)) } }catch{}
       // artifact auto-detect: son mesajda kod varsa sağ panelde göster
       const last = (data.messages??[]).slice(-1)[0]
       if(last){
@@ -55,6 +76,8 @@ export default function ChatPage() {
   useEffect(()=>{ try{ const sp=new URLSearchParams(window.location.search); const f=sp.get("fullscreen"); if(f==="1"||f===null) setIsFullscreen(true); if(f==="0") setIsFullscreen(false)}catch{}},[])
   useEffect(()=>{ const onKey=(e:KeyboardEvent)=>{ if(e.key==="Escape"&&isFullscreen) setIsFullscreen(false)}; window.addEventListener("keydown",onKey); return()=>window.removeEventListener("keydown",onKey)},[isFullscreen])
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth", block:"end"}) },[messages, typingId])
+  // localStorage sync — server 404 olsa bile mesajlar kaybolmaz
+  useEffect(()=>{ try{ if(chatId && messages.length) localStorage.setItem(`sucuk:msgs:${chatId}`, JSON.stringify(messages)) }catch{} },[messages, chatId])
 
   // typewriter — Claude fade, not harsh
   useEffect(()=>{

@@ -14,12 +14,33 @@ export default function DashboardPage() {
   const [q, setQ] = useState("")
 
   async function load(){
-    const [cRes, aRes]=await Promise.all([
-      fetch("/api/chat",{credentials:"include"}),
-      fetch("/api/announcements",{credentials:"include"}),
-    ])
-    const cData=await cRes.json(); const aData=await aRes.json()
-    setChats(cData.chats??[]); setAnnouncements(aData.announcements??[]); setLoading(false)
+    try{
+      const [cRes, aRes]=await Promise.all([
+        fetch("/api/chat",{credentials:"include"}),
+        fetch("/api/announcements",{credentials:"include"}),
+      ])
+      const cData=await cRes.json().catch(()=>({chats:[]})); const aData=await aRes.json().catch(()=>({announcements:[]}))
+      const serverChats=cData.chats??[]
+      // localStorage fallback — Vercel serverless demo RAM kayıp olursa
+      try{
+        const ls=localStorage.getItem("sucuk:chats")
+        const lsChats=ls?JSON.parse(ls):[]
+        const merged=[...serverChats]
+        for(const lc of lsChats){ if(!merged.find((c:any)=>c.id===lc.id)) merged.push(lc) }
+        // server boşsa ls kullan
+        const final=merged.length?merged:lsChats
+        setChats(final); 
+        if(final.length) localStorage.setItem("sucuk:chats", JSON.stringify(final))
+        else if(serverChats.length) localStorage.setItem("sucuk:chats", JSON.stringify(serverChats))
+      }catch{ setChats(serverChats) }
+      setAnnouncements(aData.announcements??[]); setLoading(false)
+    }catch{
+      try{
+        const ls=localStorage.getItem("sucuk:chats")
+        if(ls) setChats(JSON.parse(ls))
+      }catch{}
+      setLoading(false)
+    }
   }
 
   async function createChat(){
@@ -27,7 +48,8 @@ export default function DashboardPage() {
       const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:newTitle||"Yeni Sohbet"}),credentials:"include"})
       const data=await res.json()
       if(!res.ok){ alert(data.error||"Oluşturulamadı"); return }
-      setChats([data.chat,...chats]); setNewTitle("")
+      const newChats=[data.chat,...chats]; setChats(newChats); try{ localStorage.setItem("sucuk:chats", JSON.stringify(newChats)); localStorage.setItem(`sucuk:chat:${data.chat.id}`, JSON.stringify(data.chat)); localStorage.setItem(`sucuk:msgs:${data.chat.id}`, JSON.stringify([])) }catch{}
+      setNewTitle("")
       window.dispatchEvent(new CustomEvent("sucuk:chatsChanged"))
       window.location.href=`/chat/${data.chat.id}`
     }catch(e:any){ alert("Hata: "+e.message)}
@@ -37,9 +59,9 @@ export default function DashboardPage() {
     if(!confirm("Sohbet silinsin mi? Drive yedeğinden de silinecek.")) return
     const r=await fetch(`/api/chat/${id}`,{method:"DELETE",credentials:"include"})
     if(!r.ok){ alert("Silinemedi"); return }
-    setChats(prev=>prev.filter(c=>c.id!==id))
+    const remaining=chats.filter(c=>c.id!==id); setChats(remaining); try{ localStorage.setItem("sucuk:chats", JSON.stringify(remaining)); localStorage.removeItem(`sucuk:chat:${id}`); localStorage.removeItem(`sucuk:msgs:${id}`) }catch{}
     window.dispatchEvent(new CustomEvent("sucuk:chatsChanged",{detail:{deleted:id}}))
-    try{ const rc=await fetch("/api/chat",{credentials:"include"}); const j=await rc.json(); setChats(j.chats??[]) }catch{}
+    try{ const rc=await fetch("/api/chat",{credentials:"include"}); const j=await rc.json(); if(j.chats) { setChats(j.chats??[]); try{ localStorage.setItem("sucuk:chats", JSON.stringify(j.chats??[])) }catch{} } }catch{}
   }
 
   async function exportAll(){
