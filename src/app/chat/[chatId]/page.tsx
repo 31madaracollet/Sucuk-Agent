@@ -1,25 +1,7 @@
 "use client"
-
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import {
-  Send,
-  Bot,
-  Sparkles,
-  Search,
-  Brain,
-  Code2,
-  Image as ImageIcon,
-  RefreshCw,
-  Info,
-  AlertCircle,
-  ShieldCheck,
-  Zap,
-  Wand2,
-  Download,
-  FileText,
-  Trash2,
-} from "lucide-react"
+import { Send, Bot, Sparkles, Search, Code2, Image as ImageIcon, RefreshCw, Info, AlertCircle, Download, Paperclip, Mic, Trash2, PanelRight, X, Copy, Maximize2, Minimize2, FileText, Layers } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Sidebar } from "@/components/layout/sidebar"
@@ -35,7 +17,6 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<any[]>([])
   const [chat, setChat] = useState<any>(null)
   const [input, setInput] = useState("")
-  const mode = "auto" as const
   const [sending, setSending] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [usedProvider, setUsedProvider] = useState<string | null>(null)
@@ -44,423 +25,305 @@ export default function ChatPage() {
   const [lastDecision, setLastDecision] = useState<any>(null)
   const [typingId, setTypingId] = useState<string | null>(null)
   const [typedContent, setTypedContent] = useState<Record<string,string>>({})
-  const [attachedFile, setAttachedFile] = useState<{ name:string, dataUrl:string, type:string } | null>(null)
+  const [attachedFile, setAttachedFile] = useState<{name:string,dataUrl:string,type:string}|null>(null)
   const [recording, setRecording] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string|null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const endRef = useRef<HTMLDivElement>(null)
+  const [artifact, setArtifact] = useState<{title:string, code:string, lang:string} | null>(null)
+  const [showArtifact, setShowArtifact] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder|null>(null)
+  const fileInputRef = useRef<HTMLInputElement|null>(null)
+  const endRef = useRef<HTMLDivElement|null>(null)
 
-  async function load() {
-    try {
-      const res = await fetch(`/api/chat/${chatId}`, { credentials: "include" })
-      if (!res.ok) {
-        const j = await res.json().catch(()=>({error:"Bilinmeyen hata"}))
-        setLoadError(j.error || `Yüklenemedi (${res.status}) — tekrar dene veya geri dön`)
-        return
+  async function load(){
+    try{
+      const res = await fetch(`/api/chat/${chatId}`,{credentials:"include"})
+      if(!res.ok){ const j=await res.json().catch(()=>({error:"Bilinmeyen hata"})); setLoadError(j.error||`Yüklenemedi (${res.status})`); return }
+      const data=await res.json()
+      setChat(data.chat); setMessages(data.messages??[]); setLoadError(null)
+      // artifact auto-detect: son mesajda kod varsa sağ panelde göster
+      const last = (data.messages??[]).slice(-1)[0]
+      if(last){
+        const parts = parseMessageWithCode(last.content)
+        const codePart = parts.find(p=>p.type==="code")
+        if(codePart){ setArtifact({title: last.content.slice(0,40) || "Kod", code: codePart.content, lang: codePart.lang||"tsx"}); setShowArtifact(true) }
       }
-      const data = await res.json()
-      setChat(data.chat)
-      setMessages(data.messages ?? [])
-      setLoadError(null)
-    } catch (e:any) {
-      setLoadError("Baglanti hatasi: " + e.message)
-    }
+    }catch(e:any){ setLoadError("Bağlantı hatası: "+e.message)}
   }
 
-  useEffect(() => {
-    load()
-    const id = setInterval(async ()=>{
-      try{
-        const res = await fetch(`/api/chat/${chatId}`, { credentials: "include" })
-        if(!res.ok) return
-        const data = await res.json()
-        setChat(data.chat)
-        setMessages(data.messages ?? [])
-      }catch{}
-    }, 7000)
-    return () => clearInterval(id)
-  }, [chatId])
+  useEffect(()=>{ load(); const id=setInterval(async()=>{ try{ const r=await fetch(`/api/chat/${chatId}`,{credentials:"include"}); if(!r.ok) return; const d=await r.json(); setChat(d.chat); setMessages(d.messages??[])}catch{}},7000); return()=>clearInterval(id)},[chatId])
+  useEffect(()=>{ try{ const sp=new URLSearchParams(window.location.search); const f=sp.get("fullscreen"); if(f==="1"||f===null) setIsFullscreen(true); if(f==="0") setIsFullscreen(false)}catch{}},[])
+  useEffect(()=>{ const onKey=(e:KeyboardEvent)=>{ if(e.key==="Escape"&&isFullscreen) setIsFullscreen(false)}; window.addEventListener("keydown",onKey); return()=>window.removeEventListener("keydown",onKey)},[isFullscreen])
+  useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth", block:"end"}) },[messages, typingId])
 
-  useEffect(()=>{
-    try{
-      const sp = new URLSearchParams(window.location.search)
-      const f = sp.get("fullscreen"); if(f==="1" || f===null) setIsFullscreen(true); if(f==="0") setIsFullscreen(false)
-    }catch{}
-  },[])
-
-  // daktilo efekti
+  // typewriter — Claude fade, not harsh
   useEffect(()=>{
     if(!typingId) return
-    const full = messages.find(m=>m.id===typingId)?.content || ""
+    const full=messages.find(m=>m.id===typingId)?.content||""
     if(!full) return
-    let i = 0
-    const chunk = 3
-    const timer = setInterval(()=>{
-      i += chunk
-      setTypedContent(prev=>({...prev, [typingId!]: full.slice(0,i)}))
-      if(i >= full.length){
-        clearInterval(timer)
-        setTypingId(null)
-      }
-    }, 18)
-    return ()=>clearInterval(timer)
+    let i=0
+    const timer=setInterval(()=>{ i+=4; setTypedContent(p=>({...p,[typingId]: full.slice(0,i)})); if(i>=full.length){ clearInterval(timer); setTypingId(null)}},16)
+    return()=>clearInterval(timer)
   },[typingId, messages])
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if(!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      setAttachedFile({ name: file.name, dataUrl: reader.result as string, type: file.type })
-    }
-    reader.readAsDataURL(file)
+  const handleFileChange=(e:React.ChangeEvent<HTMLInputElement>)=>{
+    const file=e.target.files?.[0]; if(!file) return
+    const reader=new FileReader(); reader.onload=()=> setAttachedFile({name:file.name, dataUrl: reader.result as string, type:file.type}); reader.readAsDataURL(file)
   }
-  const startRecording = async () => {
+  const startRecording=async()=>{
     try{
-      const stream = await navigator.mediaDevices.getUserMedia({ audio:true })
-      const mr = new MediaRecorder(stream)
-      const chunks: BlobPart[] = []
-      mr.ondataavailable = e=>chunks.push(e.data)
-      mr.onstop = async () => {
-        const blob = new Blob(chunks, { type:"audio/webm" })
-        setStatus("Groq Whisper yazıya çeviriyor...")
-        const fd = new FormData()
-        fd.append("file", blob, "ses.webm")
-        try{
-          const r = await fetch("/api/stt",{ method:"POST", body: fd, credentials:"include"})
-          const j = await r.json()
-          if(j.ok && j.text) setInput(prev=> prev + (prev? " " : "") + j.text)
-          else setStatus("STT hata: "+ (j.error||"bilinmiyor"))
-        }catch(e:any){ setStatus("STT hata: "+e.message) }
-        setRecording(false)
-        stream.getTracks().forEach(t=>t.stop())
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true})
+      const mr=new MediaRecorder(stream); const chunks:BlobPart[]=[]
+      mr.ondataavailable=e=>chunks.push(e.data)
+      mr.onstop=async()=>{
+        const blob=new Blob(chunks,{type:"audio/webm"}); setStatus("Groq Whisper yazıya çeviriyor…")
+        const fd=new FormData(); fd.append("file",blob,"ses.webm")
+        try{ const r=await fetch("/api/stt",{method:"POST",body:fd,credentials:"include"}); const j=await r.json(); if(j.ok&&j.text) setInput(p=>p+(p?" ":"")+j.text); else setStatus("STT hata: "+(j.error||""))}catch(e:any){setStatus("STT hata: "+e.message)}
+        setRecording(false); stream.getTracks().forEach(t=>t.stop())
       }
-      mediaRecorderRef.current = mr
-      mr.start()
-      setRecording(true)
-      setStatus("🎤 Kaydediyor... tekrar bas durdur")
-    }catch{ alert("Mikrofon izni ver") }
+      mediaRecorderRef.current=mr; mr.start(); setRecording(true); setStatus("🎤 Kaydediyor… tekrar bas durdur")
+    }catch{ alert("Mikrofon izni ver")}
   }
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop()
-    setRecording(false)
-  }
-  async function deleteMsg(messageId: string){
-    if(!confirm("Bu mesaj silinecek. Drive yedeginden de silinecek - emin misin?")) return
+  const stopRecording=()=>{ mediaRecorderRef.current?.stop(); setRecording(false) }
+  async function deleteMsg(id:string){
+    if(!confirm("Bu mesaj silinecek. Drive yedeğinden de silinecek — emin misin?")) return
     try{
-      const r = await fetch(`/api/chat/${chatId}?messageId=${messageId}`, { method:"DELETE", credentials:"include"})
-      const j = await r.json()
-      if(!r.ok) alert(j.error || "Silinemedi")
-      else { setMessages(m=>m.filter(x=>x.id!==messageId)); setStatus("Silindi - "+(j.driveSync||"Drive senkron") ); setTimeout(()=>setStatus(null),3000) }
-    }catch(e:any){ alert("Silme hatasi: "+e.message) }
+      const r=await fetch(`/api/chat/${chatId}?messageId=${id}`,{method:"DELETE",credentials:"include"}); const j=await r.json()
+      if(!r.ok) alert(j.error||"Silinemedi"); else { setMessages(m=>m.filter(x=>x.id!==id)); setStatus("Silindi — "+(j.driveSync||"Drive senkron")); setTimeout(()=>setStatus(null),3000); window.dispatchEvent(new CustomEvent("sucuk:chatsChanged")) }
+    }catch(e:any){ alert("Silme hatası: "+e.message)}
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e:React.FormEvent){
     e.preventDefault()
-    if ((!input.trim() && !attachedFile) || sending) return
-    let contentToSend = input
-    if(attachedFile){
-      // foto/dosya: agent için base64 + isim ekle
-      contentToSend += `\n[Dosya: ${attachedFile.name} - ${attachedFile.type}]\n${attachedFile.dataUrl.slice(0, 8000)}`
-    }
-    const userMsg = { id: "tmp-" + Date.now(), sender: "user" as const, content: input + (attachedFile? ` 📎 ${attachedFile.name}` : ""), createdAt: new Date().toISOString() }
-    setMessages((m) => [...m, userMsg])
+    if((!input.trim()&&!attachedFile)||sending) return
+    let contentToSend=input
+    if(attachedFile) contentToSend+=`\n[Dosya: ${attachedFile.name} - ${attachedFile.type}]\n${attachedFile.dataUrl.slice(0,8000)}`
+    const userMsg={id:"tmp-"+Date.now(), sender:"user" as const, content: input + (attachedFile?` 📎 ${attachedFile.name}`:""), createdAt:new Date().toISOString()}
+    setMessages(m=>[...m, userMsg])
     setSending(true)
-    const plan = planComplexTask(input)
-    if(plan){
-      setStatus(`🧩 Çoklu görev algılandı: ${plan.task} — ${plan.steps.length} adım: ${plan.steps.map(s=>s.description).join(" → ")}`)
-    } else {
-      setStatus("Agent rota çiziyor… (görsel→FLUX, kod→GPT-OSS 120B, akıl→Reasoner)")
-    }
+    const plan=planComplexTask(input)
+    if(plan) setStatus(`🧩 Çoklu görev: ${plan.task} — ${plan.steps.length} adım`)
+    else setStatus("Agent rota çiziyor… görsel→FLUX, kod→GPT-OSS 120B, akıl→Reasoner")
     setLimitExhausted(false)
-    const bodyMsg = contentToSend
-    setInput("")
-    setAttachedFile(null)
-
-    try {
-      const payload: any = { content: bodyMsg, mode: "auto" }
-      const res = await fetch(`/api/chat/${chatId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        credentials: "include",
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setMessages((m) => [...m, { id: "err-" + Date.now(), sender: "assistant", content: `Hata: ${data.error || "Bilinmeyen hata."}`, createdAt: new Date().toISOString() } as any])
-      } else {
-        setUsedProvider(data.usedProvider ?? null)
-        setUsedModel(data.usedModel ?? null)
-        setLastDecision(data.decision ?? null)
-        setLimitExhausted(Boolean(data.limitExhausted))
+    const bodyMsg=contentToSend
+    setInput(""); setAttachedFile(null)
+    try{
+      const res=await fetch(`/api/chat/${chatId}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:bodyMsg, mode:"auto"}),credentials:"include"})
+      const data=await res.json()
+      if(!res.ok){ setMessages(m=>[...m,{id:"err-"+Date.now(), sender:"assistant", content:`Hata: ${data.error||"Bilinmeyen hata."}`, createdAt:new Date().toISOString()} as any])}
+      else{
+        setUsedProvider(data.usedProvider??null); setUsedModel(data.usedModel??null); setLastDecision(data.decision??null); setLimitExhausted(Boolean(data.limitExhausted))
         setStatus(data.limitExhausted ? "Limit doldu — yedek beleşe geçildi" : null)
-        if (data.toolOutput) {
-          setMessages((m) => [
-            ...m,
-            {
-              id: "tool-" + Date.now(),
-              sender: "assistant",
-              content: `🔎 Web Arama (Groq + DuckDuckGo):\n${data.toolOutput}`,
-              provider: "web-search",
-              createdAt: new Date().toISOString(),
-            },
-          ])
-        }
-        const newId = "asst-" + Date.now()
-        const asst = { id: newId, sender: "assistant" as const, content: data.assistant, provider: data.usedProvider, model: data.usedModel, createdAt: new Date().toISOString() }
-        setMessages((m) => [...m, asst as any])
-        setTypedContent(prev=>({...prev, [newId]:""}))
-        setTypingId(newId)
-        fetch("/api/drive/auto", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ chatId }), credentials:"include" }).catch(()=>{})
-
+        if(data.toolOutput) setMessages(m=>[...m,{id:"tool-"+Date.now(), sender:"assistant", content:`🔎 Web Arama:\n${data.toolOutput}`, provider:"web-search", createdAt:new Date().toISOString()}])
+        const newId="asst-"+Date.now()
+        const asst={id:newId, sender:"assistant" as const, content: data.assistant, provider:data.usedProvider, model:data.usedModel, createdAt:new Date().toISOString()}
+        setMessages(m=>[...m, asst as any]); setTypedContent(p=>({...p,[newId]:""})); setTypingId(newId)
+        // artifact detection for new assistant message
+        const parts=parseMessageWithCode(data.assistant||"")
+        const cp=parts.find(p=>p.type==="code")
+        if(cp){ setArtifact({title:"Artifact — "+(cp.lang||"code"), code: cp.content, lang: cp.lang||"tsx"}); setShowArtifact(true) }
+        fetch("/api/drive/auto",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chatId}),credentials:"include"}).catch(()=>{})
       }
-    } catch (err: any) {
-      setMessages((m) => [...m, { id: "err2-" + Date.now(), sender: "assistant", content: `Bağlantı hatası: ${err?.message || String(err)}`, createdAt: new Date().toISOString() } as any])
-    } finally {
-      setSending(false)
-      setTimeout(() => setStatus(null), 4000)
-    }
+    }catch(err:any){ setMessages(m=>[...m,{id:"err2-"+Date.now(), sender:"assistant", content:`Bağlantı hatası: ${err?.message||String(err)}`, createdAt:new Date().toISOString()} as any])}
+    finally{ setSending(false); setTimeout(()=>setStatus(null),4000)}
   }
 
-  const providerLabel = (p: string | null) => {
-    const labels: Record<string, string> = {
-      google: "Google",
-      openai: "OpenAI",
-      groq: "Groq",
-      grok: "Grok",
-      openrouter: "OpenRouter",
-      deepseek: "DeepSeek",
-      kimi: "KIMI",
-      nvidia: "Nvidia",
-      huggingface: "HuggingFace",
-      "web-search": "Web Arama",
-    }
-    return p ? labels[p] || p : "—"
-  }
+  const providerLabel=(p:string|null)=> ({google:"Google",openai:"OpenAI",groq:"Groq",grok:"Grok",openrouter:"OpenRouter",deepseek:"DeepSeek",kimi:"KIMI",nvidia:"Nvidia",huggingface:"HuggingFace","web-search":"Web Arama"} as any)[p||""] || p || "—"
 
-  function renderMessageContent(content: string, msgId?: string) {
-    const display = msgId && typedContent[msgId] !== undefined ? typedContent[msgId] : content
-    const toRender = display
-    // Kod blokları için CodeBlock kullan
-    const parts = parseMessageWithCode(toRender)
-    const hasCode = parts.some(p=>p.type==="code")
+  function renderMessageContent(content:string, msgId?:string){
+    const display = msgId && typedContent[msgId]!==undefined ? typedContent[msgId] : content
+    const parts=parseMessageWithCode(display)
+    const hasCode=parts.some(p=>p.type==="code")
     if(hasCode){
       return (
-        <div className="space-y-2">
-          {parts.map((p,i)=> p.type==="code" ? <CodeBlock key={i} code={p.content} language={p.lang || "tsx"} prompt={content.slice(0,200)} /> : <span key={i} className="whitespace-pre-wrap break-words">{p.content}</span>)}
+        <div className="space-y-3">
+          {parts.map((p,i)=> p.type==="code"
+            ? <div key={i} className="group/code relative"><CodeBlock code={p.content} language={p.lang||"tsx"} prompt={content.slice(0,200)}/><button onClick={()=>{ setArtifact({title:`${p.lang||"Kod"} — Artifact`, code:p.content, lang:p.lang||"tsx"}); setShowArtifact(true)}} className="absolute top-2 right-2 hidden group-hover/code:flex items-center gap-1 rounded-full bg-[var(--ink)] text-[var(--canvas)] px-2.5 py-1 text-xs"><PanelRight className="h-3 w-3"/> Artifact’te aç</button></div>
+            : <span key={i} className="whitespace-pre-wrap break-words leading-[1.7]">{p.content}</span>
+          )}
         </div>
       )
     }
-    const imgMatch = toRender.match(/!\[.*?\]\(data:image\/[^)]+\)/)
-    if (imgMatch) {
-      const before = toRender.slice(0, imgMatch.index!)
-      const after = toRender.slice(imgMatch.index! + imgMatch[0].length)
-      return (
-        <>
-          {before && <p className="whitespace-pre-wrap break-words">{before.trim()}</p>}
-          <img src={imgMatch[1]} alt="generated" className="mt-3 max-w-full rounded-xl border border-zinc-800" />
-          {after && <p className="mt-3 whitespace-pre-wrap break-words text-zinc-300">{after.trim()}</p>}
-        </>
-      )
-    }
-    // http görselleri de render et
-    const httpImg = toRender.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|webp)/i)
-    if(httpImg){
-      return (
-        <>
-          <span className="whitespace-pre-wrap break-words">{toRender}</span>
-          <img src={httpImg[0]} alt="stock" className="mt-3 max-w-full rounded-xl border border-zinc-800" />
-        </>
-      )
-    }
-    return <span className="whitespace-pre-wrap break-words">{toRender}</span>
+    const imgMatch=display.match(/!\[.*?\]\(data:image\/[^)]+\)/)
+    if(imgMatch){ const before=display.slice(0,imgMatch.index!); const after=display.slice(imgMatch.index!+imgMatch[0].length); return <><p className="whitespace-pre-wrap break-words leading-[1.7]">{before.trim()}</p><img src={(imgMatch as any)[1]} alt="generated" className="mt-3 max-w-full rounded-[12px] border border-[var(--hairline)]" />{after&&<p className="mt-3 whitespace-pre-wrap break-words text-[var(--ink-soft)]">{after.trim()}</p>}</>}
+    const httpImg=display.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|webp)/i)
+    if(httpImg) return <><span className="whitespace-pre-wrap break-words leading-[1.7]">{display}</span><img src={httpImg[0]} alt="stock" className="mt-3 max-w-full rounded-[12px] border border-[var(--hairline)]" /></>
+    return <span className="whitespace-pre-wrap break-words leading-[1.7]">{display}</span>
   }
 
-  async function downloadPDF(content: string, title: string){
-    const { jsPDF } = await import("jspdf")
-    const doc = new jsPDF()
-    doc.setFontSize(12)
-    doc.text(title, 10, 15)
-    const lines = doc.splitTextToSize(content, 180)
-    doc.setFontSize(10)
-    doc.text(lines, 10, 25)
-    doc.save(`${title.slice(0,30)}-${Date.now()}.pdf`)
-  }
+  async function downloadPDF(c:string,t:string){ const {jsPDF}=await import("jspdf"); const doc=new jsPDF(); doc.setFontSize(12); doc.text(t,10,15); const lines=doc.splitTextToSize(c,180); doc.setFontSize(10); doc.text(lines,10,25); doc.save(`${t.slice(0,30)}-${Date.now()}.pdf`) }
 
-  // Tam ekran: agent gibi — tüm ekranı kapla, ESC ile çık
-  useEffect(()=>{
-    const onKey=(e:KeyboardEvent)=>{ if(e.key==="Escape" && isFullscreen) setIsFullscreen(false)}
-    window.addEventListener("keydown", onKey)
-    return ()=>window.removeEventListener("keydown",onKey)
-  },[isFullscreen])
-
-  return (
-    <div className="flex flex-col min-h-screen bg-zinc-950 text-zinc-100">
-      {!isFullscreen && <Navbar/>}
-      <div className="flex flex-1">
-        {!isFullscreen && <Sidebar/>}
-        <div className={`flex-1 flex flex-col ${isFullscreen ? "fixed inset-0 z-50 bg-zinc-950 flex flex-col min-h-screen" : "min-h-[calc(100vh-56px)]"}`}>
-      {/* ÜST BAR */}
-      <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-black">
-              <Bot className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-tight">{chat?.title || "Sohbet"}</p>
-              <p className="truncate text-xs text-zinc-500">
-                {lastDecision ? (
-                  <>
-                    <span className="text-zinc-300">{lastDecision.agent}</span> • {providerLabel(usedProvider)} • {usedModel} • <span className="text-zinc-400">{lastDecision.reason.slice(0, 80)}</span>
-                  </>
-                ) : usedProvider ? `${providerLabel(usedProvider)} • ${usedModel}` : "Hazır — Agent beleş modellere öncelik verir"}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button onClick={()=>setIsFullscreen(v=>!v)} className="rounded-full bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white hover:text-black">{isFullscreen ? "⬙ Küçült" : "⛶ Tam Ekran"}</button>
-            <button onClick={()=>router.push("/dashboard")} className="rounded-full bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white hover:text-black">← Geri</button>
-            <span className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black"><Sparkles className="h-3 w-3" /> AGENT</span>
-            <span className={`hidden lg:inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${limitExhausted ? "border-red-900 bg-red-950 text-red-300" : "border-zinc-800 bg-zinc-900 text-zinc-400"}`}>
-              {limitExhausted ? <AlertCircle className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />} {limitExhausted ? "Yedek" : "Otomatik"}
-            </span>
+  // ARTIFACT PANEL — Claude June 2024 split
+  const ArtifactPanel = artifact ? (
+    <div className="flex flex-col h-full border-l border-[var(--hairline)] bg-[var(--surface)]">
+      <div className="h-[56px] flex items-center justify-between px-4 border-b border-[var(--hairline)] bg-[var(--canvas)] shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="h-7 w-7 rounded-[8px] bg-[var(--ink)] text-[var(--canvas)] grid place-items-center"><Layers className="h-4 w-4"/></div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium truncate">{artifact.title}</p>
+            <p className="text-xs text-[var(--muted)]">{artifact.lang} • artifact • canlı</p>
           </div>
         </div>
-        <div className="mx-auto max-w-5xl px-4 pb-2">
-          <p className="text-[11px] leading-relaxed text-zinc-500">
-            Agent: göreve göre beleşe öncelik verir — kod→GPT-OSS 120B, köpek çiz→FLUX.1 Schnell, akıl→Reasoner, genel→GPT-OSS 20B/Gemini 3.8. Supabase + Drive oto yedek aktif. Kod kutusu kopyala, PDF indir, tema otomatik.
-          </p>
+        <div className="flex items-center gap-1">
+          <button onClick={async()=>{await navigator.clipboard.writeText(artifact.code); setStatus("Kopyalandı"); setTimeout(()=>setStatus(null),1500)}} className="p-2 rounded-[8px] hover:bg-[var(--surface-cream)]"><Copy className="h-4 w-4"/></button>
+          <button onClick={()=>setShowArtifact(false)} className="p-2 rounded-[8px] hover:bg-[var(--surface-cream)]"><X className="h-4 w-4"/></button>
         </div>
       </div>
+      <div className="flex-1 overflow-auto p-4 bg-[#0a0a0b]">
+        <div className="rounded-[12px] border border-white/10 bg-[#141413] overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/[0.04]">
+            <span className="text-xs font-mono text-white/60">{artifact.lang}</span>
+            <span className="text-xs text-white/40">Claude artifact — tek dosya, interaktif</span>
+          </div>
+          <pre className="p-4 text-sm leading-[1.6] text-zinc-100 overflow-auto max-h-[60vh] font-mono whitespace-pre-wrap break-words">{artifact.code}</pre>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button onClick={()=>downloadPDF(artifact.code, artifact.title)} className="rounded-full bg-[var(--ink)] text-[var(--canvas)] px-4 py-2 text-xs font-medium">PDF indir</button>
+          <button onClick={async()=>{await navigator.clipboard.writeText(artifact.code)}} className="rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-4 py-2 text-xs">Kopyala</button>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div className="flex flex-col h-full border-l border-[var(--hairline)] bg-[var(--canvas-soft)] p-6">
+      <p className="font-display text-[18px]">Artifact</p>
+      <p className="text-sm text-[var(--muted)] mt-2">Kod veya görsel içeren mesaj gönderdiğinde burada canlı önizleme açılır. Sohbet sol, eser sağ — Claude’un imzası.</p>
+      <div className="mt-6 rounded-[12px] border border-dashed border-[var(--hairline)] bg-[var(--surface)] p-4 text-sm text-[var(--muted)]">Henüz artifact yok. “Python ile todo yaz” veya “köpek çiz” dene.</div>
+    </div>
+  )
 
-      {loadError && (
-        <div className="mx-auto w-full max-w-3xl px-4 pt-3">
-          <div className="flex items-center justify-between rounded-xl border border-red-900 bg-red-950 px-3 py-3 text-sm text-red-200">
-            <span>{loadError}</span>
-            <div className="flex gap-2 ml-2 shrink-0">
-              <button onClick={load} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-black">Tekrar Dene</button>
-              <button onClick={()=>router.push("/dashboard")} className="rounded-full bg-zinc-900 border border-zinc-700 px-3 py-1 text-xs text-white">Geri</button>
+  return (
+    <div className="flex flex-col min-h-screen bg-[var(--canvas)] text-[var(--ink)]">
+      {!isFullscreen && <Navbar/>}
+      <div className="flex flex-1 min-h-0">
+        {!isFullscreen && <Sidebar/>}
+        <div className={`flex-1 flex flex-col min-h-0 ${isFullscreen ? "fixed inset-0 z-50 bg-[var(--canvas)]" : "min-h-[calc(100vh-64px)]"}`}>
+          {/* Top bar — editorial */}
+          <div className="shrink-0 sticky top-0 z-10 border-b border-[var(--hairline)] bg-[var(--canvas)]/90 backdrop-blur">
+            <div className="mx-auto max-w-[1200px] flex items-center justify-between px-4 md:px-6 py-3 gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="h-8 w-8 rounded-[10px] bg-[var(--ink)] text-[var(--canvas)] grid place-items-center shrink-0"><Bot className="h-4 w-4"/></span>
+                <div className="min-w-0">
+                  <p className="font-display text-[16px] leading-none truncate">{chat?.title || "Sohbet"}</p>
+                  <p className="text-xs text-[var(--muted)] truncate">
+                    {lastDecision ? <><span className="text-[var(--ink)] font-medium">{lastDecision.agent}</span> • {providerLabel(usedProvider)} • {usedModel}</> : usedProvider ? `${providerLabel(usedProvider)} • ${usedModel}` : "Hazır — beleş öncelikli"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button onClick={()=>setIsFullscreen(v=>!v)} className="hidden sm:flex items-center gap-1.5 rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface-cream)]">{isFullscreen ? <><Minimize2 className="h-3 w-3"/> Küçült</> : <><Maximize2 className="h-3 w-3"/> Tam ekran</>}</button>
+                <button onClick={()=>router.push("/dashboard")} className="rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-3 py-1.5 text-xs hover:bg-[var(--surface-cream)]">← Geri</button>
+                <button onClick={()=>setShowArtifact(v=>!v)} className={`hidden lg:flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border ${showArtifact ? "bg-[var(--ink)] text-[var(--canvas)] border-transparent" : "bg-[var(--surface)] border-[var(--hairline)] hover:bg-[var(--surface-cream)]"}`}><PanelRight className="h-3 w-3"/> {showArtifact ? "Artifact gizle" : "Artifact"}</button>
+                <span className="hidden sm:flex items-center gap-1 rounded-full bg-[var(--ink)] text-[var(--canvas)] px-3 py-1.5 text-xs font-bold"><Sparkles className="h-3 w-3"/> Agent</span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-      {/* MESAJLAR */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
-          {messages.length === 0 && (
-            <div className="animate-in flex flex-col items-center justify-center py-10 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-black mb-4 shadow-lg">
-                <Sparkles className="h-7 w-7" />
-              </div>
-              <h3 className="text-lg font-semibold tracking-tight">Nasıl yardımcı olayım?</h3>
-              <p className="mt-1 max-w-md text-sm text-zinc-400">Beleş modellere öncelik veren siyah-beyaz cihaz. Kod, görsel, web arama, editör ve derin düşünme tek yerde.</p>
-              <div className="mt-6 grid w-full max-w-md grid-cols-2 gap-2">
-                <button onClick={() => setInput("Python ile todo uygulaması yaz")} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-white hover:bg-zinc-800 transition">
-                  <Code2 className="mb-1 h-4 w-4 text-white" /><p className="text-xs font-medium">Kod yaz</p><p className="text-[11px] text-zinc-500">GPT-OSS 120B • beleş</p>
-                </button>
-                <button onClick={() => setInput("Güncel yapay zeka haberlerini ara")} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-white hover:bg-zinc-800 transition">
-                  <Search className="mb-1 h-4 w-4 text-white" /><p className="text-xs font-medium">Web'de ara</p><p className="text-[11px] text-zinc-500">Groq + web</p>
-                </button>
-                <button onClick={() => setInput("Satış ve alışveriş sitesi hazırla: ürün fotoğrafları ve kodları ile tam paket")} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-white hover:bg-zinc-800 transition">
-                  <ImageIcon className="mb-1 h-4 w-4 text-white" /><p className="text-xs font-medium">Satış Sitesi</p><p className="text-[11px] text-zinc-500">FLUX + DeepSeek + GitHub</p>
-                </button>
-                <button onClick={() => setInput("Uzay temalı bir köpek çiz, poster gibi olsun")} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-white hover:bg-zinc-800 transition">
-                  <ImageIcon className="mb-1 h-4 w-4 text-white" /><p className="text-xs font-medium">Köpek çiz</p><p className="text-[11px] text-zinc-500">FLUX.1 • beleş</p>
-                </button>
-              </div>
-              <div className="mt-6 flex flex-wrap justify-center gap-2 text-[11px]">
-                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-zinc-400 flex items-center gap-1"><Zap className="h-3 w-3" /> Genel: GPT-OSS 20B • Gemini 3.8</span>
-                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-zinc-400 flex items-center gap-1"><Wand2 className="h-3 w-3" /> Görsel: FLUX.1 • Prompt Guard + stok fallback</span>
+
+          {loadError && (
+            <div className="mx-auto max-w-[1200px] px-4 pt-3">
+              <div className="flex items-center justify-between gap-2 rounded-[12px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <span>{loadError}</span>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={load} className="rounded-full bg-[var(--ink)] text-[var(--canvas)] px-3 py-1 text-xs">Tekrar dene</button>
+                  <button onClick={()=>router.push("/dashboard")} className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs">Geri</button>
+                </div>
               </div>
             </div>
           )}
 
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex gap-3 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
-              {msg.sender === "user" ? (
-                <div className="max-w-[85%]">
-                  <div className="rounded-2xl rounded-br-md bg-white px-4 py-3 text-sm leading-relaxed text-black shadow group relative">{renderMessageContent(msg.content, msg.id)}<button onClick={()=>deleteMsg(msg.id)} title="Sil - Drivedan da silinir" className="absolute -top-2 -right-2 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white shadow"><Trash2 className="h-3 w-3"/></button></div>
-                  <p className="mt-1 text-right text-[10px] text-zinc-500">Sen • {new Date(msg.createdAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</p>
+          {/* Main split — chat left, artifact right */}
+          <div className="flex flex-1 min-h-0">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0">
+              <div className="flex-1 overflow-y-auto">
+                <div className="mx-auto max-w-[740px] px-4 md:px-6 py-8 space-y-6">
+                  {messages.length===0 && (
+                    <div className="text-center py-10">
+                      <div className="mx-auto h-12 w-12 rounded-[14px] bg-[var(--ink)] text-[var(--canvas)] grid place-items-center mb-4"><Sparkles className="h-6 w-6"/></div>
+                      <h3 className="font-display text-[22px]">Nasıl yardımcı olayım?</h3>
+                      <p className="mt-2 text-sm text-[var(--muted)] max-w-[560px] mx-auto">Warm paper gündüz, OLED gece. Kod, görsel, arama — artifact sağda canlı.</p>
+                      <div className="mt-6 grid grid-cols-2 gap-3 max-w-[560px] mx-auto text-left">
+                        <button onClick={()=>setInput("Python ile modern todo uygulaması yaz, artifact'te göster")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><Code2 className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Kod yaz</p><p className="text-xs text-[var(--muted)]">GPT-OSS 120B → artifact</p></button>
+                        <button onClick={()=>setInput("Güncel yapay zeka haberlerini ara ve özetle")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><Search className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Web’de ara</p><p className="text-xs text-[var(--muted)]">Groq + DuckDuckGo</p></button>
+                        <button onClick={()=>setInput("Uzay temalı bir köpek çiz, poster gibi olsun")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><ImageIcon className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Köpek çiz</p><p className="text-xs text-[var(--muted)]">FLUX.1 → artifact</p></button>
+                        <button onClick={()=>setInput("Satış sitesi hazırla: ürün fotoğrafları ve kodları ile tam paket")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><FileText className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Satış sitesi</p><p className="text-xs text-[var(--muted)]">Orchestrator</p></button>
+                      </div>
+                    </div>
+                  )}
+
+                  {messages.map((msg)=>(
+                    <div key={msg.id} className={`flex gap-3 ${msg.sender==="user" ? "justify-end" : "justify-start"}`}>
+                      {msg.sender==="user" ? (
+                        <div className="max-w-[82%] group">
+                          <div className="rounded-[16px] rounded-br-[4px] bg-[var(--ink)] text-[var(--canvas)] px-4 py-3 text-[15px] leading-[1.6] shadow-sm relative">
+                            {renderMessageContent(msg.content, msg.id)}
+                            <button onClick={()=>deleteMsg(msg.id)} className="absolute -top-2 -right-2 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white shadow"><Trash2 className="h-3 w-3"/></button>
+                          </div>
+                          <p className="mt-1 text-right text-[11px] text-[var(--muted)]">{new Date(msg.createdAt).toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})} • Sen</p>
+                        </div>
+                      ) : (
+                        <div className="flex gap-3 max-w-[92%]">
+                          <div className="h-7 w-7 rounded-full bg-[var(--surface)] border border-[var(--hairline)] grid place-items-center shrink-0 mt-1"><Bot className="h-3.5 w-3.5"/></div>
+                          <div className="min-w-0 flex-1">
+                            <div className="rounded-[16px] rounded-tl-[4px] border border-[var(--hairline)] bg-[var(--surface)] px-4 py-3 text-[15px] leading-[1.6] text-[var(--ink)]">
+                              {renderMessageContent(msg.content, msg.id)}
+                              {typingId===msg.id && <span className="inline-block w-[2px] h-4 bg-[var(--coral)] ml-1 animate-pulse align-middle"/>}
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted)]">
+                              <span>{msg.provider ? providerLabel(msg.provider) : "Asistan"} {msg.model ? `• ${msg.model}` : ""} • {new Date(msg.createdAt).toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})}</span>
+                              <button onClick={()=>downloadPDF(msg.content, `sucuk-${msg.id}`)} className="inline-flex items-center gap-1 rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-2.5 py-1 hover:bg-[var(--surface-cream)]"><Download className="h-3 w-3"/> PDF</button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <div ref={endRef} />
                 </div>
-              ) : (
-                <div className="flex max-w-[85%] gap-3">
-                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900">
-                    <Bot className="h-3.5 w-3.5 text-zinc-300" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="rounded-2xl rounded-tl-md border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm leading-relaxed text-zinc-100 shadow-sm">
-                      {renderMessageContent(msg.content, msg.id)}
-                      {typingId===msg.id && <span className="inline-block w-1.5 h-4 bg-zinc-500 ml-0.5 animate-pulse align-middle">▌</span>}
-                    </div>
-                    <div className="mt-1 flex items-center gap-2 text-[11px] text-zinc-500">
-                      <span>{msg.provider ? providerLabel(msg.provider) : "Asistan"} {msg.model ? `• ${msg.model}` : ""} • {new Date(msg.createdAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</span>
-                      <button onClick={()=>downloadPDF(msg.content, `sucuk-${msg.id}`)} className="flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-1 text-xs hover:bg-white hover:text-black"><Download className="h-3 w-3"/> PDF</button>
-                    </div>
+              </div>
+
+              {status && <div className="mx-auto max-w-[740px] px-4 pb-2"><div className="flex items-center gap-2 rounded-[12px] border border-[var(--hairline)] bg-[var(--surface-cream)] px-3 py-2 text-xs text-[var(--ink-soft)]"><Info className="h-4 w-4 text-[var(--muted)]"/>{status}</div></div>}
+              {limitExhausted && <div className="mx-auto max-w-[740px] px-4 pb-2"><div className="flex items-center gap-2 rounded-[12px] border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"><AlertCircle className="h-4 w-4"/> Kota doldu — yedek beleşe geçildi.</div></div>}
+              {attachedFile && (
+                <div className="mx-auto max-w-[740px] px-4 pb-2">
+                  <div className="flex items-center gap-2 rounded-[12px] border border-[var(--hairline)] bg-[var(--surface)] p-3 text-xs">
+                    <span className="truncate">📎 {attachedFile.name}</span>
+                    {attachedFile.type.startsWith("image/") && <img src={attachedFile.dataUrl} alt="preview" className="h-10 w-10 rounded object-cover"/>}
+                    <button onClick={()=>setAttachedFile(null)} className="ml-auto rounded-full bg-[var(--error)] text-white px-3 py-1">Kaldır</button>
                   </div>
                 </div>
               )}
+
+              <div className="sticky bottom-0 border-t border-[var(--hairline)] bg-[var(--canvas)]">
+                <div className="mx-auto max-w-[740px] px-4 py-3">
+                  <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.txt" className="hidden" onChange={handleFileChange}/>
+                  <form onSubmit={handleSubmit} className="flex items-end gap-2 rounded-[16px] border border-[var(--hairline)] bg-[var(--surface)] p-2 shadow-[0_1px_8px_rgba(0,0,0,0.06)] focus-within:border-[var(--coral)] focus-within:ring-2 focus-within:ring-[var(--coral)]/10">
+                    <button type="button" onClick={()=>fileInputRef.current?.click()} className="h-10 w-10 shrink-0 rounded-[10px] bg-[var(--canvas-soft)] border border-[var(--hairline)] grid place-items-center hover:bg-[var(--surface-cream)]"><Paperclip className="h-4 w-4 text-[var(--muted)]"/></button>
+                    <button type="button" onClick={recording ? stopRecording : startRecording} className={`h-10 w-10 shrink-0 rounded-[10px] border grid place-items-center ${recording ? "bg-red-600 border-red-600 text-white animate-pulse" : "bg-[var(--canvas-soft)] border-[var(--hairline)] hover:bg-[var(--surface-cream)] text-[var(--muted)]"}`}><Mic className="h-4 w-4"/></button>
+                    <Textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); handleSubmit(e as any)} }} placeholder="Bir şey sor… (@ dosya, 🎤 ses → Groq Whisper)" rows={1} disabled={sending} className="max-h-32 min-h-[42px] flex-1 resize-none border-0 bg-transparent text-[15px] placeholder:text-[var(--muted)] focus:ring-0 shadow-none" />
+                    <Button type="submit" disabled={sending || (!input.trim() && !attachedFile)} className="h-10 w-10 shrink-0 rounded-[10px] bg-[var(--coral)] hover:bg-[var(--coral-active)] text-white p-0 disabled:opacity-40">
+                      {sending ? <RefreshCw className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}
+                    </Button>
+                  </form>
+                  <p className="mt-2 text-center text-[11px] text-[var(--muted)]">Enter gönder • Shift+Enter satır • 🎤 Groq Whisper • Supabase + Drive oto-yedek</p>
+                </div>
+              </div>
             </div>
-          ))}
-          <div ref={endRef} />
-        </div>
-      </div>
 
-      {status && (
-        <div className="mx-auto w-full max-w-3xl px-4">
-          <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-300">
-            <Info className="h-4 w-4 text-zinc-400" /> {status}
+            {/* Artifact — desktop split, mobile drawer */}
+            {showArtifact ? (
+              <div className="hidden lg:flex w-[420px] xl:w-[480px] shrink-0">{ArtifactPanel}</div>
+            ) : null}
           </div>
-        </div>
-      )}
-      {limitExhausted && (
-        <div className="mx-auto w-full max-w-3xl px-4 pb-1">
-          <div className="flex items-center gap-2 rounded-xl border border-red-900 bg-red-950 px-3 py-2 text-xs text-red-200">
-            <AlertCircle className="h-4 w-4" /> Kota doldu — yedek beleş modele geçildi. Stok görsel fallback aktif.
-          </div>
-        </div>
-      )}
 
-      {attachedFile && (
-        <div className="mx-auto w-full max-w-3xl px-4 pb-2">
-          <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2 text-xs">
-            <span className="truncate">📎 {attachedFile.name} ({attachedFile.type})</span>
-            {attachedFile.type.startsWith("image/") && <img src={attachedFile.dataUrl} alt="preview" className="h-10 w-10 rounded object-cover"/>}
-            <button onClick={()=>setAttachedFile(null)} className="ml-auto rounded-full bg-red-600 px-2 py-1 text-white">Kaldır</button>
-          </div>
-        </div>
-      )}
-      {/* YAZMA ÇUBUĞU */}
-      <div className="sticky bottom-0 border-t border-zinc-800 bg-zinc-950">
-        <div className="mx-auto max-w-3xl px-4 py-3">
-          <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.txt" className="hidden" onChange={handleFileChange}/>
-          <form onSubmit={handleSubmit} className="flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-2 shadow-lg focus-within:border-white focus-within:ring-1 focus-within:ring-white">
-            <Button type="button" variant="ghost" onClick={()=>fileInputRef.current?.click()} className="h-10 w-10 shrink-0 rounded-xl bg-zinc-800 text-zinc-400 hover:bg-white hover:text-black">📎</Button>
-            <Button type="button" variant="ghost" onClick={recording ? stopRecording : startRecording} className={`h-10 w-10 shrink-0 rounded-xl ${recording ? "bg-red-600 text-white animate-pulse" : "bg-zinc-800 text-zinc-400 hover:bg-white hover:text-black"}`}>🎤</Button>
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSubmit(e as any)
-                }
-              }}
-              placeholder="Agent'a yaz… dosya ekle 📎 veya sesle 🎤 (Groq STT) → otomatik yaz"
-              rows={1}
-              disabled={sending}
-              className="max-h-32 min-h-[44px] flex-1 resize-none border-0 bg-transparent text-sm placeholder:text-zinc-500 focus:ring-0 focus-visible:ring-0 shadow-none"
-            />
-            <Button type="submit" disabled={sending || (!input.trim() && !attachedFile)} className="h-10 w-10 shrink-0 rounded-xl bg-white p-0 text-black hover:bg-zinc-200">
-              {sending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
-          </form>
-          <p className="mt-2 text-center text-[11px] text-zinc-500">Enter gönderir • Shift+Enter yeni satır • 📎 Dosya/foto Agent'a • 🎤 Groq Whisper STT → arkadaşına da • Supabase + Drive oto yedek ✓</p>
-        </div>
-      </div>
+          {/* Mobile artifact sheet */}
+          {showArtifact && (
+            <div className="lg:hidden fixed inset-0 z-40 flex flex-col bg-[var(--canvas)]">
+              <div className="flex items-center justify-between p-3 border-b border-[var(--hairline)]">
+                <span className="text-sm font-medium">Artifact</span>
+                <button onClick={()=>setShowArtifact(false)} className="p-2 rounded-full hover:bg-[var(--surface-cream)]"><X className="h-4 w-4"/></button>
+              </div>
+              <div className="flex-1 overflow-auto">{ArtifactPanel}</div>
+            </div>
+          )}
         </div>
       </div>
     </div>

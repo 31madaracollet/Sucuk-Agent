@@ -1,33 +1,40 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useState, createContext, useContext } from "react"
+
+type Theme = "light" | "dark"
+const ThemeCtx = createContext<{ theme: Theme; toggle: (t: Theme)=>void } | null>(null)
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<"light"|"dark">("dark")
+  const [theme, setTheme] = useState<Theme>("light") // Claude default = paper light, not dark
   useEffect(()=>{
-    // sadece localStorage'e bak, sistemi otomatik takip etme (kullanıcı şikayeti: temayı mahvetti)
-    const saved = localStorage.getItem("sucuk:theme") as any
-    if(saved==="light" || saved==="dark") setTheme(saved)
-    else setTheme("dark")
+    const saved = localStorage.getItem("sucuk:theme") as Theme | null
+    if(saved==="light"||saved==="dark") setTheme(saved)
+    else {
+      // system preference, but default to light (Claude editorial)
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+      setTheme(prefersDark ? "dark" : "light")
+    }
   },[])
   useEffect(()=>{
     document.documentElement.classList.toggle("light", theme==="light")
     document.documentElement.classList.toggle("dark", theme==="dark")
     document.documentElement.style.colorScheme = theme
+    localStorage.setItem("sucuk:theme", theme)
   },[theme])
-  return <>{children}</>
+
+  const toggle = (t: Theme) => setTheme(t)
+
+  return <ThemeCtx.Provider value={{ theme, toggle }}>{children}</ThemeCtx.Provider>
 }
 
-export function useThemeToggle() {
-  const [theme,setTheme]=useState<"light"|"dark">("dark")
-  useEffect(()=>{
-    const saved = localStorage.getItem("sucuk:theme") as any
-    if(saved) setTheme(saved)
-  },[])
-  const toggle = (t:"light"|"dark") => {
-    setTheme(t)
-    localStorage.setItem("sucuk:theme", t)
-    document.documentElement.classList.toggle("light", t==="light")
-    document.documentElement.classList.toggle("dark", t==="dark")
-  }
+export function useTheme(){
+  const ctx = useContext(ThemeCtx)
+  if(!ctx) throw new Error("useTheme outside provider")
+  return ctx
+}
+
+// legacy export for settings page
+export function useThemeToggle(){
+  const { theme, toggle } = useTheme()
   return { theme, toggle }
 }

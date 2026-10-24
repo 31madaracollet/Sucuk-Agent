@@ -3,14 +3,17 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 
 export const metadata: Metadata = {
-  title: "Sucuk-Agent — Siyah/Beyaz Cihaz",
-  description: "Orchestrator'lı, beleş modellere öncelik veren siyah-beyaz premium AI agent. Supabase + Drive yedek, arkadaşlar, editör, PDF, tema.",
+  title: "Sucuk-Agent — Düşünen Partner (Claude Editorial × Cihaz Gece)",
+  description: "Warm parchment gündüz, OLED cihaz gece. Orchestrator beleş modellere öncelik verir — kod→GPT-OSS 120B, görsel→FLUX, akıl→Reasoner. Supabase + Drive, arkadaşlar DM, Google oto-bağlama, artifact split.",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="tr" className="h-full dark">
-      <body className="min-h-full bg-zinc-950 text-zinc-100 antialiased selection:bg-white selection:text-black">
+    <html lang="tr" className="h-full" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+      </head>
+      <body className="min-h-full bg-[var(--bg)] text-[var(--fg)] antialiased selection:bg-[#cc785c]/20">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

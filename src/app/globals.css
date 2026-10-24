@@ -1,26 +1,130 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root { --radius: 0.75rem; --bg: #09090b; --fg: #fafafa; --muted:#27272a; }
+  :root {
+    /* Claude Design Tokens — warm editorial */
+    --canvas: #faf9f5;          /* parchment floor */
+    --canvas-soft: #f5f0e8;      /* card tint */
+    --surface: #ffffff;         /* card bg light */
+    --surface-cream: #f5f4ed;   /* Claude paper */
+    --ink: #141413;             /* near-black text */
+    --ink-soft: #3d3d3a;
+    --muted: #6c6a64;
+    --muted-soft: #8e8b82;
+    --hairline: #e6dfd8;         /* 1px border */
+    --hairline-soft: #f0eee6;
+    --coral: #cc785c;            /* primary accent */
+    --coral-active: #a9583e;
+    --coral-soft: #f5e3c7;       /* featured */
+    --success: #1a7f37;
+    --warning: #9a6b00;
+    --error: #cf222e;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 32px;
+    --bg: var(--canvas);
+    --fg: var(--ink);
+    --header-h: 64px;
+    --sidebar-w: 280px;
+  }
+
+  html.dark {
+    --canvas: #09090b;          /* zinc-950 — cihaz gece */
+    --canvas-soft: #18181b;     /* zinc-900 */
+    --surface: #18181b;         /* zinc-900 card */
+    --surface-cream: #27272a;   /* zinc-800 */
+    --ink: #fafafa;             /* zinc-50 */
+    --ink-soft: #a1a1aa;         /* zinc-400 */
+    --muted: #71717a;            /* zinc-500 */
+    --muted-soft: #52525b;       /* zinc-600 */
+    --hairline: #27272a;          /* zinc-800 */
+    --hairline-soft: #3f3f46;    /* zinc-700 */
+    --coral: #cc785c;
+    --coral-active: #a9583e;
+    --bg: var(--canvas);
+    --fg: var(--ink);
+  }
+
+  /* System font stack: Cormorant for display, Inter for UI, JetBrains for code */
   html { scroll-behavior: smooth; }
-  body { background: var(--bg); color: var(--fg); }
-  html.dark { --bg:#09090b; --fg:#fafafa; }
-  /* Light mode sadece ayarlar'dan açılırsa, agresif override yapma - minimal */
-  html.light { --bg:#f8fafc; --fg:#18181b; }
-  html.light body { background: var(--bg); color: var(--fg); }
-  /* bağlantıları düzelt: light'ta linkler görünür */
-  html.light a { color: #18181b; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv02','cv03','cv04','cv11';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Editorial display */
+  h1, h2, .font-display {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+  .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+  /* Focus — Claude ring, not heavy */
+  *:focus-visible {
+    outline: 2px solid var(--coral);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
 }
 
+/* Scrollbar — warm hairline */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #27272a; border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted-soft); }
 
-/* Premium focus ring */
-*:focus-visible { outline: none; box-shadow: 0 0 0 2px #fafafa, 0 0 0 4px #09090b; }
+/* Selection — coral tint */
+::selection { background: #cc785c22; }
 
-/* Markdown-ish */
-.prose-invert a { color: #fafafa; text-decoration: underline; text-underline-offset: 3px; }
+/* Prose — editorial */
+.prose a { color: var(--coral); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.prose a:hover { color: var(--coral-active); }
+
+/* Sidebar — paper feel */
+.sidebar-paper {
+  background: var(--canvas);
+  border-right: 1px solid var(--hairline);
+}
+html.dark .sidebar-paper {
+  background: var(--canvas);
+  border-right: 1px solid var(--hairline);
+}
+
+/* Card — Claude white + hairline, no shadow stacking */
+.card-claude {
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-lg);
+}
+.card-claude:hover { border-color: var(--hairline); }
+
+/* Button — coral primary */
+.btn-coral {
+  background: var(--coral);
+  color: white;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  height: 40px;
+  transition: background 150ms ease;
+}
+.btn-coral:hover { background: var(--coral-active); }
+.btn-coral:active { background: #8a3d28; }
+
+/* Artifact split — Claude June 2024 signature */
+.artifact-panel {
+  background: var(--surface);
+  border-left: 1px solid var(--hairline-soft);
+}
