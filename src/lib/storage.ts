@@ -446,12 +446,7 @@ export async function getChat(chatId: string, userId: string) {
     return fromDbChat(data)
   }
   const chat = demo.chats.get(chatId)
-  if (!chat) return null
-  if (chat.userId !== userId) {
-    // Demo fallback: Supabase yokken sahiplik katı değil — yoksa 404 yersin
-    if (!isSupabaseConfigured) return chat
-    return null
-  }
+  if (!chat || chat.userId !== userId) return null
   return chat
 }
 
@@ -604,13 +599,24 @@ export async function addFriendship(userId: string, friendId: string): Promise<F
   return f
 }
 
-export async function acceptFriendship(id: string) {
+export async function acceptFriendship(id: string, accepterId?: string) {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabaseAdmin) {
+    // sadece alıcı (friend_id) kabul edebilir
+    const { data: fr } = await supabaseAdmin.from("friendships").select("*").eq("id", id).single()
+    if (!fr) throw new Error("İstek bulunamadı")
+    if (accepterId && fr.friend_id !== accepterId && fr.user_id !== accepterId) throw new Error("Yetkin yok")
+    if (accepterId && fr.friend_id !== accepterId) throw new Error("Sadece isteği alan kişi kabul edebilir")
+    if (fr.status !== "pending") throw new Error("Zaten işlenmiş")
     await supabaseAdmin.from("friendships").update({ status: "accepted" }).eq("id", id)
   } else {
     for (const arr of Array.from(demo.friendships.values())) {
       const f = arr.find((x) => x.id === id)
-      if (f) { f.status = "accepted"; try{ saveDemoStore() }catch{} }
+      if (f) {
+        if (accepterId && f.friendId !== accepterId) throw new Error("Sadece isteği alan kişi kabul edebilir — gönderen değil")
+        if (f.status !== "pending") throw new Error("Zaten işlenmiş")
+        f.status = "accepted"; try{ saveDemoStore() }catch{}
+      }
     }
   }
 }

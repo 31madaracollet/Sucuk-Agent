@@ -52,7 +52,7 @@ export async function PATCH(req: Request) {
     if (!id) {
       return NextResponse.json({ error: "Arkadaşlık ID gerekli." }, { status: 400 });
     }
-    await acceptFriendship(id);
+    await acceptFriendship(id, user.id);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: "Onaylanamadı: " + (err?.message ?? String(err)) }, { status: 500 });
