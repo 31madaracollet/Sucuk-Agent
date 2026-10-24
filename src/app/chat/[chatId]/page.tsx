@@ -57,6 +57,16 @@ export default function ChatPage() {
             return
           }
         }catch{}
+        // Arada bir Vercel cold-start 404 — listeden senkronla, 1 sn sonra tekrar dene (kullanıcı görmez)
+        try{
+          const listRes=await fetch("/api/chat",{credentials:"include"})
+          const listJson=await listRes.json().catch(()=>({}))
+          if(listJson.chats?.find((c:any)=>c.id===chatId)){
+            setLoadError("Senkronlanıyor… 1 sn sonra tekrar deniyorum")
+            setTimeout(()=>load(), 900)
+            return
+          }
+        }catch{}
         setLoadError((j.error||`Yüklenemedi (${res.status})`) + (j.debug ? ` — ${JSON.stringify(j.debug)}` : "")); return
       }
       const data=await res.json()
