@@ -52,8 +52,15 @@ export default function WorkspacePage() {
                 <p className="text-sm text-[var(--muted)] mt-1">Kullanıcıya özel bağlama + kör gömülü hesaplar. Agent hepsini kullanır — artifact’te göster.</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={autoConnectGoogle} disabled={googleConnecting} className="btn-coral">{googleConnecting ? "Bağlanıyor…" : "🔗 Google Oto-Bağla (Agent Direkt)"}</Button>
+                <a href="/api/auth/github" className="inline-flex items-center gap-2 rounded-[8px] bg-[#24292f] text-white px-4 py-2 text-sm font-medium hover:bg-black"><Github className="h-4 w-4"/> GitHub Gerçek Bağla</a>
+                <a href="/api/auth/google?type=all" className="inline-flex items-center gap-2 rounded-[8px] bg-[#4285F4] text-white px-4 py-2 text-sm font-medium hover:bg-[#357ae8]"><HardDrive className="h-4 w-4"/> Google Gerçek Bağla (Drive + Takvim)</a>
+                <Button onClick={autoConnectGoogle} disabled={googleConnecting} variant="outline" className="border-[var(--hairline)] bg-[var(--surface)]">{googleConnecting ? "Bağlanıyor…" : "🔗 Hızlı Dümenden Bağla"}</Button>
                 <Button variant="outline" className="rounded-[8px] border-[var(--hairline)] bg-[var(--surface)]" onClick={()=>window.open("/friends","_blank")}><ExternalLink className="h-4 w-4"/> Arkadaşlarla Proje</Button>
+              </div>
+              <div className="mt-3 rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                <b>Gerçek bağlama için senin yapman gereken (1 dk):</b><br/>
+                1) GitHub: github.com → Settings → Developer settings → OAuth Apps → New → Callback: <code className="bg-white px-1 rounded">https://sucuk-agent.vercel.app/api/auth/github/callback</code> → Client ID/Secret’i Vercel Env’e ekle → sonra üstteki siyah buton.<br/>
+                2) Google: console.cloud.google.com → APIs → Credentials → OAuth 2.0 → Authorized redirect: <code className="bg-white px-1 rounded">https://sucuk-agent.vercel.app/api/auth/google/callback</code> → Client ID/Secret’i Vercel Env’e ekle → mavi buton. Scopes: Drive + Calendar (Agenda).
               </div>
             </div>
 

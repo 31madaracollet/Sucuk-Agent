@@ -167,8 +167,9 @@ export default function ChatPage() {
         </div>
       )
     }
-    const imgMatch=display.match(/!\[.*?\]\(data:image\/[^)]+\)/)
-    if(imgMatch){ const before=display.slice(0,imgMatch.index!); const after=display.slice(imgMatch.index!+imgMatch[0].length); return <><p className="whitespace-pre-wrap break-words leading-[1.7]">{before.trim()}</p><img src={(imgMatch as any)[1]} alt="generated" className="mt-3 max-w-full rounded-[12px] border border-[var(--hairline)]" />{after&&<p className="mt-3 whitespace-pre-wrap break-words text-[var(--ink-soft)]">{after.trim()}</p>}</>}
+    const mdImgRegex=/!\[.*?\]\(([^)]+)\)/g
+    const mdMatch=Array.from(display.matchAll(mdImgRegex)).find(m=>m[1].startsWith("data:image/") || m[1].match(/^https?:\/\//))
+    if(mdMatch){ const url=mdMatch[1]; const before=display.slice(0, mdMatch.index!); const after=display.slice(mdMatch.index!+mdMatch[0].length); return <><p className="whitespace-pre-wrap break-words leading-[1.7]">{before.trim()}</p><img src={url} alt="generated" className="mt-3 max-w-full rounded-[12px] border border-[var(--hairline)]" onError={e=>{(e.target as HTMLImageElement).style.display="none"}} />{after&&<p className="mt-3 whitespace-pre-wrap break-words text-[var(--ink-soft)]">{after.trim()}</p>}</>}
     const httpImg=display.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|webp)/i)
     if(httpImg) return <><span className="whitespace-pre-wrap break-words leading-[1.7]">{display}</span><img src={httpImg[0]} alt="stock" className="mt-3 max-w-full rounded-[12px] border border-[var(--hairline)]" /></>
     return <span className="whitespace-pre-wrap break-words leading-[1.7]">{display}</span>
