@@ -60,7 +60,16 @@ export async function GET(req: Request, { params }: { params: { chatId: string }
     return NextResponse.json({ error: check.error }, { status: check.status })
   }
   const chat = await getChat(params.chatId, check.user.id)
-  if (!chat) return NextResponse.json({ error: "Sohbet bulunamadı." }, { status: 404 })
+  if (!chat) {
+    // Detaylı hata — frontend'de ne kaçtı görelim (Supabase kapalıysa dosya fallback)
+    try{
+      const { listChats } = await import("@/lib/storage")
+      const all = await listChats(check.user.id)
+      const { isSupabaseConfigured } = await import("@/lib/supabase")
+      return NextResponse.json({ error: "Sohbet bulunamadı.", debug: { userId: check.user.id, chatId: params.chatId, isSupabaseConfigured, totalChatsForUser: all.length, totalChatsIds: all.slice(0,5).map(c=>c.id) } }, { status: 404 })
+    }catch{}
+    return NextResponse.json({ error: "Sohbet bulunamadı." }, { status: 404 })
+  }
   const messages = await listMessages(params.chatId)
   return NextResponse.json({ chat, messages })
 }

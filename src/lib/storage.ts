@@ -40,6 +40,58 @@ const demo: {
   projectMembers: new Map(),
 }
 
+/* Vercel serverless: Map tek başına yetmez — sohbet bulunamadı hatası bu yüzden */
+const STORE_PATHS = ["/tmp/sucuk-store.json", "./data/sucuk-store.json", "/tmp/sucuk-agent-store.json"]
+function loadDemoStore(){
+  for(const p of STORE_PATHS){
+    try{
+      const fs=require("fs") as typeof import("fs")
+      if(!fs.existsSync(p)) continue
+      const raw=fs.readFileSync(p,"utf8")
+      const j=JSON.parse(raw)
+      if(j.profiles) demo.profiles=new Map(j.profiles)
+      if(j.chats) demo.chats=new Map(j.chats)
+      if(j.messages) demo.messages=new Map(j.messages)
+      if(j.friendships) demo.friendships=new Map(j.friendships)
+      if(j.dms) demo.dms=new Map(j.dms)
+      if(j.announcements) demo.announcements=j.announcements
+      if(j.tools) demo.tools=j.tools
+      if(j.notifications) demo.notifications=new Map(j.notifications)
+      if(j.projects) demo.projects=new Map(j.projects)
+      if(j.projectMembers) demo.projectMembers=new Map(j.projectMembers)
+      break
+    }catch{}
+  }
+}
+function saveDemoStore(){
+  if(isSupabaseConfigured) return
+  try{
+    const fs=require("fs") as typeof import("fs")
+    const path=require("path") as typeof import("path")
+    const payload=JSON.stringify({
+      profiles: Array.from(demo.profiles.entries()),
+      chats: Array.from(demo.chats.entries()),
+      messages: Array.from(demo.messages.entries()),
+      friendships: Array.from(demo.friendships.entries()),
+      dms: Array.from(demo.dms.entries()),
+      announcements: demo.announcements,
+      tools: demo.tools,
+      notifications: Array.from(demo.notifications.entries()),
+      projects: Array.from(demo.projects.entries()),
+      projectMembers: Array.from(demo.projectMembers.entries()),
+    })
+    for(const p of STORE_PATHS){
+      try{
+        const dir=path.dirname(p)
+        if(dir!=="." && dir!=="/tmp"){
+          try{ fs.mkdirSync(dir,{recursive:true}) }catch{}
+        }
+        fs.writeFileSync(p, payload, "utf8")
+      }catch{}
+    }
+  }catch{}
+}
+try{ loadDemoStore() }catch{}
 const id = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 const now = () => new Date().toISOString()
 
@@ -205,6 +257,7 @@ const fromDbProjectMember = (r: any): ProjectMember => ({
 })
 
 export async function ensureDemoProfiles() {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const admin = await getProfileByUsername("Sucuk9977")
   if (!admin) {
     await createProfile("demo-admin-001", "Sucuk9977", "admin")
@@ -232,6 +285,7 @@ export async function ensureDemoProfiles() {
 }
 
 export async function ensureDemoIntegrations(userId: string){
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const existing = await listTools()
   const mine = existing.filter(t=> t.addedBy===userId || t.addedBy==="system-embedded")
   if(mine.length>0) return
@@ -335,7 +389,7 @@ export async function createProfile(
     const { error } = await supabaseAdmin.from("profiles").insert([dbRow])
     if (error) console.error("createProfile db err", error)
   } else {
-    demo.profiles.set(nid, profile)
+    demo.profiles.set(nid, profile); try{ saveDemoStore() }catch{}
   }
   return profile as Profile
 }
@@ -344,7 +398,7 @@ export async function deleteProfile(id: string) {
   if (isSupabaseConfigured && supabaseAdmin) {
     await supabaseAdmin.from("profiles").delete().eq("id", id)
   } else {
-    demo.profiles.delete(id)
+    demo.profiles.delete(id); try{ saveDemoStore() }catch{}
   }
 }
 
@@ -353,6 +407,7 @@ export async function deleteProfile(id: string) {
 /* ------------------------------------------------------------------ */
 
 export async function listChats(userId: string): Promise<Chat[]> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("chats").select("*").eq("user_id", userId).order("updated_at", { ascending: false })
     if (error) { console.error("listChats err", error); return [] }
@@ -364,6 +419,7 @@ export async function listChats(userId: string): Promise<Chat[]> {
 }
 
 export async function createChat(userId: string, title = "Yeni Sohbet"): Promise<Chat> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const chat: Chat = {
     id: id(),
     userId,
@@ -377,23 +433,30 @@ export async function createChat(userId: string, title = "Yeni Sohbet"): Promise
     if (error) console.error("createChat db err", error)
   } else {
     demo.chats.set(chat.id, chat)
-    demo.messages.set(chat.id, [])
+    demo.messages.set(chat.id, []); try{ saveDemoStore() }catch{}
   }
   return chat
 }
 
 export async function getChat(chatId: string, userId: string) {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("chats").select("*").eq("id", chatId).eq("user_id", userId).single()
     if (error || !data) return null
     return fromDbChat(data)
   }
   const chat = demo.chats.get(chatId)
-  if (!chat || chat.userId !== userId) return null
+  if (!chat) return null
+  if (chat.userId !== userId) {
+    // Demo fallback: Supabase yokken sahiplik katı değil — yoksa 404 yersin
+    if (!isSupabaseConfigured) return chat
+    return null
+  }
   return chat
 }
 
 export async function updateChatTitle(chatId: string, title: string) {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabaseAdmin) {
     await supabaseAdmin.from("chats").update({ title, updated_at: now() }).eq("id", chatId)
   } else {
@@ -401,12 +464,13 @@ export async function updateChatTitle(chatId: string, title: string) {
     if (c) {
       c.title = title
       c.updatedAt = now()
-      demo.chats.set(chatId, c)
+      demo.chats.set(chatId, c); try{ saveDemoStore() }catch{}
     }
   }
 }
 
 export async function deleteChat(chatId: string, userId: string) {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabaseAdmin) {
     await supabaseAdmin.from("chats").delete().eq("id", chatId).eq("user_id", userId)
     await supabaseAdmin.from("messages").delete().eq("chat_id", chatId)
@@ -414,7 +478,7 @@ export async function deleteChat(chatId: string, userId: string) {
     const c = demo.chats.get(chatId)
     if (c && c.userId === userId) {
       demo.chats.delete(chatId)
-      demo.messages.delete(chatId)
+      demo.messages.delete(chatId); try{ saveDemoStore() }catch{}
     }
   }
 }
@@ -424,6 +488,7 @@ export async function deleteChat(chatId: string, userId: string) {
 /* ------------------------------------------------------------------ */
 
 export async function listMessages(chatId: string): Promise<ChatMessage[]> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("messages").select("*").eq("chat_id", chatId).order("created_at", { ascending: true })
     if (error) { console.error("listMessages err", error); return [] }
@@ -436,6 +501,7 @@ export async function addMessage(
   chatId: string,
   message: Omit<ChatMessage, "id" | "createdAt">
 ): Promise<ChatMessage> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const m: ChatMessage = { ...message, id: id(), createdAt: now() }
   const dbRow = toDbMessage(m)
   if (isSupabaseConfigured && supabaseAdmin) {
@@ -445,17 +511,18 @@ export async function addMessage(
   } else {
     const arr = demo.messages.get(chatId) ?? []
     arr.push(m)
-    demo.messages.set(chatId, arr)
+    demo.messages.set(chatId, arr); try{ saveDemoStore() }catch{}
     const c = demo.chats.get(chatId)
     if (c) {
       c.updatedAt = now()
-      demo.chats.set(chatId, c)
+      demo.chats.set(chatId, c); try{ saveDemoStore() }catch{}
     }
   }
   return m
 }
 
 export async function deleteMessage(chatId: string, messageId: string, userId: string): Promise<boolean> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   // Sadece kendi mesajını silebilir (veya admin)
   if (isSupabaseConfigured && supabaseAdmin) {
     const { data: msg } = await supabaseAdmin.from("messages").select("*").eq("id", messageId).eq("chat_id", chatId).single()
@@ -478,12 +545,13 @@ export async function deleteMessage(chatId: string, messageId: string, userId: s
     const chat = demo.chats.get(chatId)
     if (!chat || (chat.userId !== userId && demo.profiles.get(userId)?.role !== "admin")) return false
     msgs.splice(idx, 1)
-    demo.messages.set(chatId, msgs)
+    demo.messages.set(chatId, msgs); try{ saveDemoStore() }catch{}
     return true
   }
 }
 
 export async function deleteDirectMessage(messageId: string, userId: string): Promise<boolean> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabaseAdmin) {
     const { data: dm } = await supabaseAdmin.from("direct_messages").select("*").eq("id", messageId).single()
     if (!dm || dm.sender_id !== userId) return false
@@ -492,7 +560,7 @@ export async function deleteDirectMessage(messageId: string, userId: string): Pr
   } else {
     for (const [key, arr] of Array.from(demo.dms.entries())) {
       const idx = arr.findIndex(m => m.id === messageId && m.senderId === userId)
-      if (idx !== -1) { arr.splice(idx, 1); return true }
+      if (idx !== -1) { arr.splice(idx, 1); try{ saveDemoStore() }catch{}; return true }
     }
     return false
   }
@@ -503,6 +571,7 @@ export async function deleteDirectMessage(messageId: string, userId: string): Pr
 /* ------------------------------------------------------------------ */
 
 export async function listFriendships(userId: string): Promise<Friendship[]> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("friendships").select("*").or(`user_id.eq.${userId},friend_id.eq.${userId}`)
     if (error) { console.error("listFriendships err", error); return [] }
@@ -512,6 +581,7 @@ export async function listFriendships(userId: string): Promise<Friendship[]> {
 }
 
 export async function addFriendship(userId: string, friendId: string): Promise<Friendship> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const f: Friendship = {
     id: id(),
     userId,
@@ -528,7 +598,7 @@ export async function addFriendship(userId: string, friendId: string): Promise<F
   } else {
     const arr = demo.friendships.get(userId) ?? []
     arr.push(f)
-    demo.friendships.set(userId, arr)
+    demo.friendships.set(userId, arr); try{ saveDemoStore() }catch{}
     await createNotification(friendId, "friend_request", "Yeni arkadaş isteği", `${userId} seni ekledi`, friendId)
   }
   return f
@@ -540,7 +610,7 @@ export async function acceptFriendship(id: string) {
   } else {
     for (const arr of Array.from(demo.friendships.values())) {
       const f = arr.find((x) => x.id === id)
-      if (f) f.status = "accepted"
+      if (f) { f.status = "accepted"; try{ saveDemoStore() }catch{} }
     }
   }
 }
@@ -550,6 +620,7 @@ export async function acceptFriendship(id: string) {
 /* ------------------------------------------------------------------ */
 
 export async function listDirectMessages(userId: string, otherId: string): Promise<DirectMessage[]> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase
       .from("direct_messages")
@@ -564,6 +635,7 @@ export async function listDirectMessages(userId: string, otherId: string): Promi
 }
 
 export async function addDirectMessage(senderId: string, receiverId: string, content: string): Promise<DirectMessage> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const m: DirectMessage = {
     id: id(),
     senderId,
@@ -580,7 +652,7 @@ export async function addDirectMessage(senderId: string, receiverId: string, con
   } else {
     const arr = demo.dms.get(senderId) ?? []
     arr.push(m)
-    demo.dms.set(senderId, arr)
+    demo.dms.set(senderId, arr); try{ saveDemoStore() }catch{}
     await createNotification(receiverId, "dm", "Yeni mesaj", `${senderId}: ${content.slice(0,40)}`, senderId)
   }
   return m
@@ -591,6 +663,7 @@ export async function addDirectMessage(senderId: string, receiverId: string, con
 /* ------------------------------------------------------------------ */
 
 export async function listAnnouncements(): Promise<SystemAnnouncement[]> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("system_announcements").select("*").order("created_at", { ascending: false })
     if (error) return []
@@ -604,6 +677,7 @@ export async function createAnnouncement(
   content: string,
   createdBy: string
 ): Promise<SystemAnnouncement> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const a: SystemAnnouncement = {
     id: id(),
     title,
@@ -616,7 +690,7 @@ export async function createAnnouncement(
     const { error } = await supabaseAdmin.from("system_announcements").insert([dbRow])
     if (error) console.error("createAnnouncement err", error)
   } else {
-    demo.announcements.push(a)
+    demo.announcements.push(a); try{ saveDemoStore() }catch{}
   }
   // herkese bildirim
   const profiles = await listProfiles()
@@ -631,6 +705,7 @@ export async function createAnnouncement(
 /* ------------------------------------------------------------------ */
 
 export async function listTools(): Promise<DynamicTool[]> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("dynamic_tools").select("*").order("created_at", { ascending: false })
     if (error) return []
@@ -645,6 +720,7 @@ export async function addTool(
   config: any,
   addedBy: string
 ): Promise<DynamicTool> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const t: DynamicTool = {
     id: id(),
     name,
@@ -658,16 +734,17 @@ export async function addTool(
     const { error } = await supabaseAdmin.from("dynamic_tools").insert([dbRow])
     if (error) console.error("addTool err", error)
   } else {
-    demo.tools.push(t)
+    demo.tools.push(t); try{ saveDemoStore() }catch{}
   }
   return t
 }
 
 export async function removeTool(id: string) {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabaseAdmin) {
     await supabaseAdmin.from("dynamic_tools").delete().eq("id", id)
   } else {
-    demo.tools = demo.tools.filter((t) => t.id !== id)
+    demo.tools = demo.tools.filter((t) => t.id !== id); try{ saveDemoStore() }catch{}
   }
 }
 
@@ -676,6 +753,7 @@ export async function removeTool(id: string) {
 /* ------------------------------------------------------------------ */
 
 export async function listNotifications(userId: string): Promise<Notification[]> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("notifications").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(50)
     if (error) return []
@@ -691,6 +769,7 @@ export async function createNotification(
   content: string,
   fromUserId?: string
 ): Promise<Notification> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const n: Notification = {
     id: id(),
     userId,
@@ -707,12 +786,13 @@ export async function createNotification(
   } else {
     const arr = demo.notifications.get(userId) ?? []
     arr.push(n)
-    demo.notifications.set(userId, arr)
+    demo.notifications.set(userId, arr); try{ saveDemoStore() }catch{}
   }
   return n
 }
 
 export async function markNotificationRead(id: string, userId: string) {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabaseAdmin) {
     await supabaseAdmin.from("notifications").update({ read: true }).eq("id", id).eq("user_id", userId)
   } else {
@@ -736,6 +816,7 @@ export async function markAllNotificationsRead(userId: string) {
 /* ------------------------------------------------------------------ */
 
 export async function listProjects(userId: string): Promise<Project[]> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
     // üyesi olduğu projeler
     const { data: members } = await supabase.from("project_members").select("project_id").eq("user_id", userId)
@@ -752,6 +833,7 @@ export async function listProjects(userId: string): Promise<Project[]> {
 }
 
 export async function createProject(name: string, description: string, ownerId: string, inviteIds: string[] = []): Promise<Project> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const p: Project = {
     id: id(),
     name,
@@ -769,14 +851,14 @@ export async function createProject(name: string, description: string, ownerId: 
       await createNotification(uid, "project_invite", "Projeye davet", `${ownerId} seni "${name}" projesine davet etti`, ownerId)
     }
   } else {
-    demo.projects.set(p.id, p)
+    demo.projects.set(p.id, p); try{ saveDemoStore() }catch{}
     const ownerM: ProjectMember = { id: id(), projectId: p.id, userId: ownerId, role: "owner", createdAt: now() }
-    demo.projectMembers.set(p.id, [ownerM])
+    demo.projectMembers.set(p.id, [ownerM]); try{ saveDemoStore() }catch{}
     for (const uid of inviteIds) {
       const m: ProjectMember = { id: id(), projectId: p.id, userId: uid, role: "member", createdAt: now() }
       const arr = demo.projectMembers.get(p.id) ?? []
       arr.push(m)
-      demo.projectMembers.set(p.id, arr)
+      demo.projectMembers.set(p.id, arr); try{ saveDemoStore() }catch{}
       await createNotification(uid, "project_invite", "Projeye davet", `${ownerId} seni "${name}" projesine davet etti`, ownerId)
     }
   }
@@ -784,6 +866,7 @@ export async function createProject(name: string, description: string, ownerId: 
 }
 
 export async function listProjectMembers(projectId: string): Promise<ProjectMember[]> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
     const { data } = await supabase.from("project_members").select("*").eq("project_id", projectId)
     return (data ?? []).map(fromDbProjectMember)
@@ -812,6 +895,7 @@ export async function inviteToProject(projectId: string, userId: string, inviter
 /*  Bellek Temizliği (1 hafta kullanılmayan sohbetler silinir, admin hariç) */
 /* ------------------------------------------------------------------ */
 export async function cleanupOldChats(): Promise<{ deleted: number, skippedAdmin: number }> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const oneWeekAgo = new Date(Date.now() - 7*24*60*60*1000).toISOString()
   let deleted = 0, skippedAdmin = 0
   if (isSupabaseConfigured && supabaseAdmin) {
@@ -830,7 +914,7 @@ export async function cleanupOldChats(): Promise<{ deleted: number, skippedAdmin
       if(chat.updatedAt < oneWeekAgo){
         const p = demo.profiles.get(chat.userId)
         if(p?.role === "admin"){ skippedAdmin++; continue }
-        demo.chats.delete(id); demo.messages.delete(id); deleted++
+        demo.chats.delete(id); demo.messages.delete(id); deleted++; try{ saveDemoStore() }catch{}
       }
     }
   }
