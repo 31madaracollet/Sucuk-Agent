@@ -18,6 +18,7 @@ import {
   Wand2,
   Download,
   FileText,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -122,6 +123,15 @@ export default function ChatPage() {
   const stopRecording = () => {
     mediaRecorderRef.current?.stop()
     setRecording(false)
+  }
+  async function deleteMsg(messageId: string){
+    if(!confirm("Bu mesaj silinecek. Drive yedeginden de silinecek - emin misin?")) return
+    try{
+      const r = await fetch(`/api/chat/${chatId}?messageId=${messageId}`, { method:"DELETE", credentials:"include"})
+      const j = await r.json()
+      if(!r.ok) alert(j.error || "Silinemedi")
+      else { setMessages(m=>m.filter(x=>x.id!==messageId)); setStatus("Silindi - "+(j.driveSync||"Drive senkron") ); setTimeout(()=>setStatus(null),3000) }
+    }catch(e:any){ alert("Silme hatasi: "+e.message) }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -330,7 +340,7 @@ export default function ChatPage() {
             <div key={msg.id} className={`flex gap-3 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
               {msg.sender === "user" ? (
                 <div className="max-w-[85%]">
-                  <div className="rounded-2xl rounded-br-md bg-white px-4 py-3 text-sm leading-relaxed text-black shadow">{renderMessageContent(msg.content, msg.id)}</div>
+                  <div className="rounded-2xl rounded-br-md bg-white px-4 py-3 text-sm leading-relaxed text-black shadow group relative">{renderMessageContent(msg.content, msg.id)}<button onClick={()=>deleteMsg(msg.id)} title="Sil - Drivedan da silinir" className="absolute -top-2 -right-2 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white shadow"><Trash2 className="h-3 w-3"/></button></div>
                   <p className="mt-1 text-right text-[10px] text-zinc-500">Sen • {new Date(msg.createdAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</p>
                 </div>
               ) : (

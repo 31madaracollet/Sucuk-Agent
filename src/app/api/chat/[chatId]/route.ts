@@ -186,6 +186,14 @@ export async function DELETE(req: Request, { params }: { params: { chatId: strin
   await ensureDemoProfiles()
   const check = await requireAuth()
   if ("error" in check) return NextResponse.json({ error: check.error }, { status: check.status })
+  const url = new URL(req.url)
+  const messageId = url.searchParams.get("messageId")
+  if (messageId) {
+    const { deleteMessage } = await import("@/lib/storage")
+    const ok = await deleteMessage(params.chatId, messageId, check.user.id)
+    if (!ok) return NextResponse.json({ error: "Mesaj silinemedi (yetki yok veya bulunamadı)" }, { status: 403 })
+    return NextResponse.json({ ok: true, deleted: messageId, driveSync: "Drive yedekte de silinecek (oto senkron)" })
+  }
   const { deleteChat } = await import("@/lib/storage")
   await deleteChat(params.chatId, check.user.id)
   return NextResponse.json({ ok: true })

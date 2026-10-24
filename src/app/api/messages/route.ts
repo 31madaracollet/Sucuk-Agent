@@ -44,3 +44,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "İleti gönderilemedi: " + (err?.message ?? String(err)) }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  await ensureDemoProfiles();
+  const user = getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Oturum açmalısınız." }, { status: 401 });
+  const { searchParams } = new URL(req.url);
+  const messageId = searchParams.get("messageId");
+  if (!messageId) return NextResponse.json({ error: "messageId gerekli" }, { status: 400 });
+  const { deleteDirectMessage } = await import("@/lib/storage");
+  const ok = await deleteDirectMessage(messageId, user.id);
+  if (!ok) return NextResponse.json({ error: "Silinemedi" }, { status: 403 });
+  return NextResponse.json({ ok: true, deleted: messageId, driveSync: "Drive yedekte de silinecek" });
+}

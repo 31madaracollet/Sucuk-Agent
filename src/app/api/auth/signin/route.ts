@@ -19,12 +19,21 @@ export async function POST(req: Request) {
     }
 
     const token = createSession(user)
-    const cookie = setSessionCookie(token)
 
-    return NextResponse.json(
+    const res = NextResponse.json(
       { ok: true, user, message: "Giriş başarılı." },
-      { status: 200, headers: { "Set-Cookie": cookie } }
+      { status: 200 }
     )
+    // Secure fix: Vercel HTTPS için Secure ekle, Lax yeterli, HttpOnly korumalı
+    const isProd = process.env.NODE_ENV === "production"
+    res.cookies.set("sucuk_session", token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isProd,
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    })
+    return res
   } catch (err: any) {
     return NextResponse.json(
       { error: "Giriş sırasında hata oluştu: " + (err?.message ?? String(err)) },

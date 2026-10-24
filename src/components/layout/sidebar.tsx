@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { MessageCircle, Users, Plus, ChevronLeft, ChevronRight, User, Settings, LogOut, HardDrive, Bot, X, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boolean }) {
   const [collapsed, setCollapsed] = useState(collapsedDefault)
@@ -15,6 +16,8 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
   const [newUsername, setNewUsername] = useState("")
   const pathname = usePathname()
   const router = useRouter()
+  const isMobile = useIsMobile()
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(()=>{
     const loadUser = async () => {
@@ -79,6 +82,57 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
     const r = await fetch("/api/profile", { method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ username:newUsername }), credentials:"include"})
     if(r.ok){ alert("Profil güncellendi"); setShowProfile(false); location.reload() }
     else alert("Güncellenemedi")
+  }
+
+  // Mobilde drawer - kapalıysa sadece açma butonu
+  if(isMobile){
+    return (
+      <>
+        <button onClick={()=>setMobileOpen(true)} className="fixed bottom-6 left-6 z-30 lg:hidden flex h-12 w-12 items-center justify-center rounded-full bg-white text-black shadow-lg">
+          <MessageCircle className="h-6 w-6"/>
+        </button>
+        {mobileOpen && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={()=>setMobileOpen(false)} />
+            <div className="absolute left-0 top-0 h-full w-[85vw] max-w-[320px] bg-zinc-950 border-r border-zinc-800 flex flex-col overflow-hidden">
+              <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+                <p className="font-semibold text-white">Sohbetler</p>
+                <button onClick={()=>setMobileOpen(false)} className="p-2 rounded-full hover:bg-zinc-900"><X className="h-4 w-4"/></button>
+              </div>
+              <div className="p-3">
+                <button onClick={async()=>{ await createNewChat(); setMobileOpen(false)}} className="w-full flex items-center justify-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-medium text-black">
+                  <Plus className="h-4 w-4"/> Yeni Sohbet
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                <div>
+                  <p className="text-xs tracking-widest text-zinc-500">SOHBET GEÇMİŞİ</p>
+                  <div className="mt-2 space-y-1">
+                    {chats.slice(0,15).map((c:any)=>(
+                      <Link key={c.id} href={`/chat/${c.id}`} onClick={()=>setMobileOpen(false)} className={`block rounded-xl px-3 py-3 text-sm ${pathname===`/chat/${c.id}` ? "bg-white text-black":"bg-zinc-900 text-zinc-300"}`}>
+                        {c.title}
+                      </Link>
+                    ))}
+                    {chats.length===0 && <p className="text-xs text-zinc-600">Henüz yok</p>}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs tracking-widest text-zinc-500">ARKADAŞLAR</p>
+                  <div className="mt-2 space-y-1">
+                    {friends.slice(0,6).map((f:any)=>(
+                      <button key={f.id} onClick={()=>{ loadFriendChat(f.friend?.id || f.friendId, f); }} className="w-full flex items-center gap-2 rounded-xl bg-zinc-900 px-3 py-2 text-sm text-left">
+                        <div className="h-6 w-6 rounded-full bg-zinc-800 flex items-center justify-center text-xs">{f.friend?.username?.[0] ?? "?"}</div>
+                        <span className="truncate flex-1">{f.friend?.username ?? f.friend_id}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    )
   }
 
   if(collapsed) {

@@ -97,8 +97,8 @@ export function Navbar() {
             <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-black">{isAdmin ? "ADMIN" : "USER"}</span>
           </span>
           <button
-            onClick={() => {
-              document.cookie = "sucuk_session=; Path=/; Max-Age=0"
+            onClick={async () => {
+              await fetch("/api/auth/signout", { method:"POST", credentials:"include"})
               window.location.href = "/login"
             }}
             className="hidden sm:flex items-center gap-2 rounded-full border border-zinc-800 px-3 py-2 text-sm text-zinc-400 hover:bg-white hover:text-black transition"
@@ -135,8 +135,8 @@ export function Navbar() {
               </Link>
             )}
             <button
-              onClick={() => {
-                document.cookie = "sucuk_session=; Path=/; Max-Age=0"
+              onClick={async () => {
+                await fetch("/api/auth/signout", { method:"POST", credentials:"include"})
                 window.location.href = "/login"
                 setOpen(false)
               }}

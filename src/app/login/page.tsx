@@ -36,8 +36,8 @@ export default function LoginPage() {
         setLoading(false)
         return
       }
-      router.push("/dashboard")
-      router.refresh()
+      // Cookie HttpOnly olduğu için JS okuyamaz, hard redirect gerekir
+      window.location.href = "/dashboard"
     } catch (err: any) {
       setError(err?.message || "Beklenmeyen hata.")
       setLoading(false)

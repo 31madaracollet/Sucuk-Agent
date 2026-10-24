@@ -441,6 +441,49 @@ export async function addMessage(
   return m
 }
 
+export async function deleteMessage(chatId: string, messageId: string, userId: string): Promise<boolean> {
+  // Sadece kendi mesajını silebilir (veya admin)
+  if (isSupabaseConfigured && supabaseAdmin) {
+    const { data: msg } = await supabaseAdmin.from("messages").select("*").eq("id", messageId).eq("chat_id", chatId).single()
+    if (!msg) return false
+    const { data: chat } = await supabaseAdmin.from("chats").select("*").eq("id", chatId).single()
+    if (!chat || chat.user_id !== userId) {
+      const { data: profile } = await supabaseAdmin.from("profiles").select("role").eq("id", userId).single()
+      if ((profile as any)?.role !== "admin") return false
+    }
+    if ((msg as any).sender !== "user") {
+      // assistant mesajını da kullanıcı silebilir kendi sohbetinde
+      if (chat.user_id !== userId) return false
+    }
+    await supabaseAdmin.from("messages").delete().eq("id", messageId)
+    return true
+  } else {
+    const msgs = demo.messages.get(chatId) ?? []
+    const idx = msgs.findIndex(m => m.id === messageId)
+    if (idx === -1) return false
+    const chat = demo.chats.get(chatId)
+    if (!chat || (chat.userId !== userId && demo.profiles.get(userId)?.role !== "admin")) return false
+    msgs.splice(idx, 1)
+    demo.messages.set(chatId, msgs)
+    return true
+  }
+}
+
+export async function deleteDirectMessage(messageId: string, userId: string): Promise<boolean> {
+  if (isSupabaseConfigured && supabaseAdmin) {
+    const { data: dm } = await supabaseAdmin.from("direct_messages").select("*").eq("id", messageId).single()
+    if (!dm || dm.sender_id !== userId) return false
+    await supabaseAdmin.from("direct_messages").delete().eq("id", messageId)
+    return true
+  } else {
+    for (const [key, arr] of Array.from(demo.dms.entries())) {
+      const idx = arr.findIndex(m => m.id === messageId && m.senderId === userId)
+      if (idx !== -1) { arr.splice(idx, 1); return true }
+    }
+    return false
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Friendships                                                      */
 /* ------------------------------------------------------------------ */

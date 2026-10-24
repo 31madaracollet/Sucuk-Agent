@@ -198,7 +198,7 @@ export default function FriendsPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto">
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 lg:mx-0 lg:px-0">
         {(["friends","notifs","projects","drive"] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} className={`rounded-full px-4 py-2 text-sm font-medium border transition whitespace-nowrap ${tab===t ? "bg-white text-black border-white" : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600"}`}>
             {t==="friends" && `Arkadaşlar (${accepted.length})`}
@@ -251,7 +251,7 @@ export default function FriendsPage() {
                 })}
               </CardContent>
             </Card>
-            <Card className="lg:col-span-2 h-[560px] flex flex-col">
+            <Card className="lg:col-span-2 h-[70vh] lg:h-[560px] flex flex-col">
               {!otherId ? <CardContent className="flex h-full flex-col items-center justify-center text-zinc-500"><MessageCircle className="h-12 w-12 mb-3 opacity-50" /><p>Arkadaş seç, DM başlat — foto/video/ses atabilirsin.</p></CardContent> : (
                 <>
                   <CardHeader className="pb-2 border-b border-zinc-800">
@@ -265,19 +265,19 @@ export default function FriendsPage() {
                   </CardHeader>
                   <CardContent className="flex-1 overflow-y-auto p-4 space-y-3 bg-zinc-950">
                     {dms.length===0 ? <p className="text-center text-sm text-zinc-500">Henüz mesaj yok — WhatsApp gibi foto/video/ses at.</p> : dms.map((m:any)=>(
-                      <div key={m.id} className={`flex ${m.senderId===otherId ? "justify-start" : "justify-end"}`}>
-                        <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${m.senderId===otherId?"bg-zinc-900 border border-zinc-800 text-zinc-100":"bg-white text-black"}`}>
+                      <div key={m.id} className={`flex group ${m.senderId===otherId ? "justify-start" : "justify-end"}`}>
+                        <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm relative ${m.senderId===otherId?"bg-zinc-900 border border-zinc-800 text-zinc-100":"bg-white text-black"}`}>
                           {m.mediaUrl && m.mediaType==="image" && <img src={m.mediaUrl} alt="media" className="max-w-[220px] rounded-xl mb-2"/>}
                           {m.mediaUrl && m.mediaType==="video" && <video src={m.mediaUrl} controls className="max-w-[220px] rounded-xl mb-2"/>}
                           {m.mediaUrl && m.mediaType==="audio" && <audio src={m.mediaUrl} controls className="w-full mb-2"/>}
                           {!m.mediaUrl && m.content?.startsWith("data:") && m.content.includes("base64") && m.content.startsWith("data:image") && <img src={m.content} alt="media" className="max-w-[220px] rounded-xl mb-2"/>}
                           <p>{m.content && !m.content.startsWith("data:") ? m.content : (!m.mediaUrl ? "📎 Medya" : "")}</p>
-                          <div className="text-[10px] opacity-60 mt-1">{new Date(m.createdAt).toLocaleTimeString("tr-TR")} • {m.mediaType ? `Drive: ${m.mediaType}` : "Supabase"}</div>
+                          <div className="text-[10px] opacity-60 mt-1 flex items-center gap-2">{new Date(m.createdAt).toLocaleTimeString("tr-TR")} • {m.mediaType ? `Drive: ${m.mediaType}` : "Supabase"} {m.senderId!==otherId && <button onClick={async()=>{ if(!confirm("Silinsin mi? Drive yedeginden de silinecek")) return; await fetch(`/api/messages?messageId=${m.id}`,{method:"DELETE",credentials:"include"}); loadFriends()}} className="hidden group-hover:inline text-red-500">Sil</button>}</div>
                         </div>
                       </div>
                     ))}
                   </CardContent>
-                  <div className="flex gap-2 border-t border-zinc-800 p-3 bg-zinc-900">
+                  <div className="flex flex-wrap lg:flex-nowrap gap-2 border-t border-zinc-800 p-2 lg:p-3 bg-zinc-900">
                     <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={e=>{const f=e.target.files?.[0]; if(f) sendMedia(f)}}/>
                     <Button size="sm" variant="outline" className="rounded-full" onClick={()=>fileInputRef.current?.click()}><Paperclip className="h-4 w-4"/></Button>
                     <Button size="sm" variant="outline" className="rounded-full" onClick={()=>fileInputRef.current?.click()}><ImageIcon className="h-4 w-4"/></Button>
