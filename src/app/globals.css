@@ -5,16 +5,13 @@
 @layer base {
   :root { --radius: 0.75rem; --bg: #09090b; --fg: #fafafa; --muted:#27272a; }
   html { scroll-behavior: smooth; }
-  body { background: var(--bg); color: var(--fg); transition: background 0.2s, color 0.2s; }
-  html.light { --bg: #ffffff; --fg: #09090b; --muted:#e4e4e7; }
-  html.light body { background: var(--bg); color: var(--fg); }
-  html.light .bg-zinc-950 { background: var(--bg) !important; }
-  html.light .bg-zinc-900 { background: #f4f4f5 !important; }
-  html.light .bg-zinc-950 { background: #ffffff !important; }
-  html.light .text-white { color: #09090b !important; }
-  html.light .text-zinc-100 { color: #27272a !important; }
-  html.light .border-zinc-800 { border-color: #e4e4e7 !important; }
+  body { background: var(--bg); color: var(--fg); }
   html.dark { --bg:#09090b; --fg:#fafafa; }
+  /* Light mode sadece ayarlar'dan açılırsa, agresif override yapma - minimal */
+  html.light { --bg:#f8fafc; --fg:#18181b; }
+  html.light body { background: var(--bg); color: var(--fg); }
+  /* bağlantıları düzelt: light'ta linkler görünür */
+  html.light a { color: #18181b; }
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }

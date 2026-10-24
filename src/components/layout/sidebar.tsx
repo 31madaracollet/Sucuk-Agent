@@ -17,14 +17,14 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
   const router = useRouter()
 
   useEffect(()=>{
-    try{
-      const m = document.cookie.match(/sucuk_session=([^;]+)/)
-      if(m){
-        const payload = JSON.parse(atob(m[1].split(".")[0].replace(/-/g,"+").replace(/_/g,"/")))
-        setUser(payload)
-        setNewUsername(payload.u)
-      }
-    }catch{}
+    const loadUser = async () => {
+      try {
+        const r = await fetch("/api/auth/me", { credentials:"include"})
+        const j = await r.json()
+        if(j.authenticated && j.user){ setUser({ u: j.user.username, r: j.user.role, id: j.user.id }); setNewUsername(j.user.username) }
+      } catch {}
+    }
+    loadUser()
     loadChats()
     loadFriends()
   },[])
@@ -44,11 +44,34 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
     }catch{}
   }
 
+  const [selectedFriend, setSelectedFriend] = useState<any>(null)
+  const [friendMsgs, setFriendMsgs] = useState<any[]>([])
+  const [friendInput, setFriendInput] = useState("")
+
+  async function loadFriendChat(friendId: string, friendObj:any){
+    setSelectedFriend(friendObj)
+    try{
+      const r = await fetch(`/api/messages?otherId=${friendId}`, { credentials:"include"})
+      const j = await r.json()
+      setFriendMsgs(j.messages ?? [])
+    }catch{}
+  }
+  async function sendFriendMsg(){
+    if(!friendInput.trim() || !selectedFriend) return
+    const fid = selectedFriend.friend?.id || selectedFriend.friendId || selectedFriend.friend_id
+    await fetch("/api/messages", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ receiverId: fid, content: friendInput }), credentials:"include"})
+    setFriendInput("")
+    loadFriendChat(fid, selectedFriend)
+  }
+
   async function createNewChat(){
-    const res = await fetch("/api/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ title:"Yeni Sohbet" }), credentials:"include"})
-    const data = await res.json()
-    if(data.chat) router.push(`/chat/${data.chat.id}`)
-    loadChats()
+    try{
+      const res = await fetch("/api/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ title:"Yeni Sohbet" }), credentials:"include"})
+      const data = await res.json()
+      if(!res.ok){ alert(data.error || "Oluşturulamadı - yeniden giriş yap"); return }
+      if(data.chat) router.push(`/chat/${data.chat.id}`)
+      loadChats()
+    }catch(e:any){ alert("Hata: "+e.message) }
   }
 
   async function saveProfile(){
@@ -99,14 +122,29 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
           <p className="text-xs tracking-widest text-zinc-500 flex items-center gap-2"><Users className="h-3 w-3"/> REHBER / ARKADAŞLAR</p>
           <div className="mt-2 space-y-1">
             {friends.length===0 ? <p className="text-xs text-zinc-600">Arkadaş yok — arkadaş ekle</p> : friends.map((f:any)=>(
-              <div key={f.id} className="flex items-center gap-2 rounded-xl bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
-                <div className="h-6 w-6 rounded-full bg-zinc-800 flex items-center justify-center text-xs">{f.friend?.username?.[0] ?? "?"}</div>
-                <span className="truncate">{f.friend?.username ?? f.friend_id}</span>
-                <Link href={`/friends?dm=${f.friend_id}`} className="ml-auto text-xs bg-white text-black px-2 py-1 rounded-full">DM</Link>
-              </div>
+              <button key={f.id} onClick={()=>loadFriendChat(f.friend?.id || f.friendId, f)} className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-left ${selectedFriend?.id===f.id ? "bg-white text-black" : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800"}`}>
+                <div className="h-6 w-6 rounded-full bg-zinc-800 flex items-center justify-center text-xs shrink-0">{f.friend?.username?.[0] ?? "?"}</div>
+                <span className="truncate flex-1">{f.friend?.username ?? f.friend_id}</span>
+                <span className={`text-xs px-2 py-1 rounded-full ${selectedFriend?.id===f.id?"bg-black text-white":"bg-white text-black"}`}>Sohbet</span>
+              </button>
             ))}
             <Link href="/friends" className="block text-xs text-center text-zinc-500 hover:text-white mt-1">Tüm arkadaşlar →</Link>
           </div>
+          {selectedFriend && (
+            <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
+              <p className="text-xs text-zinc-400 mb-2">💬 {selectedFriend.friend?.username ?? "Arkadaş"} ile sohbet</p>
+              <div className="max-h-40 overflow-y-auto space-y-1 mb-2">
+                {friendMsgs.length===0 ? <p className="text-xs text-zinc-600">Mesaj yok</p> : friendMsgs.slice(-8).map((m:any)=>(
+                  <div key={m.id} className={`text-xs p-2 rounded-lg ${m.receiverId===selectedFriend.friend?.id || m.receiverId===selectedFriend.friendId ? "bg-white text-black ml-4" : "bg-zinc-950 text-zinc-300 mr-4"}`}>{m.content}</div>
+                ))}
+              </div>
+              <div className="flex gap-1">
+                <input value={friendInput} onChange={e=>setFriendInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendFriendMsg()} placeholder="Mesaj..." className="flex-1 bg-zinc-950 border border-zinc-800 rounded-full px-3 py-1 text-xs text-white"/>
+                <button onClick={sendFriendMsg} className="bg-white text-black rounded-full px-3 py-1 text-xs">Gönder</button>
+              </div>
+              <Link href={`/friends?dm=${selectedFriend.friend?.id || selectedFriend.friendId}`} className="block text-[10px] text-center text-zinc-500 mt-1 hover:text-white">Tam ekran →</Link>
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">

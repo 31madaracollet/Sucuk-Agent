@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getCurrentUser } from "./src/lib/auth";
 
 /* Korunan sayfalar: giriş gerektirir. */
 const protectedPaths = [
@@ -16,7 +15,23 @@ const publicApiPrefixes = ["/api/auth/signin", "/api/auth/me", "/api/auth/signou
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const user = getCurrentUser();
+  // Edge'de Node crypto yok, basit varlık kontrolü + payload decode
+  let user = null
+  try {
+    const token = req.cookies.get("sucuk_session")?.value
+    if (token && token.includes(".")) {
+      const [payload] = token.split(".")
+      if (payload) {
+        try {
+          // base64url -> base64
+          const b64 = payload.replace(/-/g,"+").replace(/_/g,"/")
+          const json = atob(b64)
+          const data = JSON.parse(json)
+          if (data.u && data.r) user = { id: data.id || `dyn-${data.u}`, username: data.u, role: data.r }
+        } catch {}
+      }
+    }
+  } catch {}
 
   // API istekleri
   if (pathname.startsWith("/api/")) {

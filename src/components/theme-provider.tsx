@@ -4,11 +4,10 @@ import { useEffect, useState } from "react"
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<"light"|"dark">("dark")
   useEffect(()=>{
-    const mql = window.matchMedia("(prefers-color-scheme: light)")
-    const update = () => setTheme(mql.matches ? "light" : "dark")
-    update()
-    mql.addEventListener("change", update)
-    return ()=> mql.removeEventListener("change", update)
+    // sadece localStorage'e bak, sistemi otomatik takip etme (kullanıcı şikayeti: temayı mahvetti)
+    const saved = localStorage.getItem("sucuk:theme") as any
+    if(saved==="light" || saved==="dark") setTheme(saved)
+    else setTheme("dark")
   },[])
   useEffect(()=>{
     document.documentElement.classList.toggle("light", theme==="light")
@@ -23,7 +22,6 @@ export function useThemeToggle() {
   useEffect(()=>{
     const saved = localStorage.getItem("sucuk:theme") as any
     if(saved) setTheme(saved)
-    else if(window.matchMedia("(prefers-color-scheme: light)").matches) setTheme("light")
   },[])
   const toggle = (t:"light"|"dark") => {
     setTheme(t)

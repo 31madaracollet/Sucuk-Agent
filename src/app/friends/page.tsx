@@ -29,6 +29,7 @@ export default function FriendsPage() {
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [recording, setRecording] = useState(false)
+  const [sttRecording, setSttRecording] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
 
   async function loadFriends() {
@@ -106,6 +107,31 @@ export default function FriendsPage() {
     mediaRecorderRef.current?.stop()
     setRecording(false)
   }
+  const startSTT = async () => {
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true })
+      const mr = new MediaRecorder(stream)
+      const chunks: BlobPart[] = []
+      mr.ondataavailable = e=>chunks.push(e.data)
+      mr.onstop = async ()=>{
+        const blob = new Blob(chunks, { type:"audio/webm" })
+        const fd = new FormData()
+        fd.append("file", blob, "ses.webm")
+        try{
+          const r = await fetch("/api/stt",{ method:"POST", body: fd, credentials:"include"})
+          const j = await r.json()
+          if(j.ok && j.text) setNewMessage(prev=> prev + (prev? " " : "") + j.text)
+          else alert("STT hata: "+(j.error||""))
+        }catch(e:any){ alert("STT hata: "+e.message)}
+        setSttRecording(false)
+        stream.getTracks().forEach(t=>t.stop())
+      }
+      mediaRecorderRef.current = mr
+      mr.start()
+      setSttRecording(true)
+    }catch{ alert("Mikrofon izni gerekli") }
+  }
+  const stopSTT = () => { mediaRecorderRef.current?.stop(); setSttRecording(false) }
   async function markRead(id: string) {
     await fetch("/api/notifications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }), credentials: "include" })
     loadNotifs()
@@ -255,8 +281,9 @@ export default function FriendsPage() {
                     <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={e=>{const f=e.target.files?.[0]; if(f) sendMedia(f)}}/>
                     <Button size="sm" variant="outline" className="rounded-full" onClick={()=>fileInputRef.current?.click()}><Paperclip className="h-4 w-4"/></Button>
                     <Button size="sm" variant="outline" className="rounded-full" onClick={()=>fileInputRef.current?.click()}><ImageIcon className="h-4 w-4"/></Button>
-                    <Button size="sm" variant={recording?"default":"outline"} className="rounded-full" onClick={recording ? stopRecording : startRecording}>{recording ? "⏹️" : <Mic className="h-4 w-4"/>}</Button>
-                    <Input placeholder="Mesaj yaz..." value={newMessage} onChange={e=>setNewMessage(e.target.value)} onKeyDown={e=>e.key==="Enter" && sendMessage()} className="bg-zinc-950 border-zinc-800 text-white"/>
+                    <Button size="sm" variant={recording?"default":"outline"} className="rounded-full" onClick={recording ? stopRecording : startRecording} title="Ses gönder (audio dosyası)">{recording ? "⏹️" : <Mic className="h-4 w-4"/>}</Button>
+                    <Button size="sm" variant={sttRecording?"default":"outline"} className={`rounded-full ${sttRecording?"bg-emerald-600 text-white animate-pulse":""}`} onClick={sttRecording ? stopSTT : startSTT} title="Groq STT → yazıya çevir">🎙️</Button>
+                    <Input placeholder="Mesaj yaz... (🎙️ Groq STT ile konuş)" value={newMessage} onChange={e=>setNewMessage(e.target.value)} onKeyDown={e=>e.key==="Enter" && sendMessage()} className="bg-zinc-950 border-zinc-800 text-white"/>
                     <Button onClick={sendMessage} className="rounded-full bg-white text-black"><Send className="h-4 w-4" /></Button>
                   </div>
                 </>

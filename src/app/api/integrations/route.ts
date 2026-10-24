@@ -20,7 +20,6 @@ export async function POST(req: Request) {
   await ensureDemoProfiles()
   const user = getCurrentUser()
   if (!user) return NextResponse.json({ error: "Oturum açmalısınız." }, { status: 401 })
-  if (!isAdmin(user)) return NextResponse.json({ error: "Sadece admin bağlayabilir" }, { status: 403 })
   const body = await req.json()
   const { provider, name, config } = body as { provider?: string; name?: string; config?: any }
   if (!provider || !name) return NextResponse.json({ error: "provider ve name gerekli" }, { status: 400 })

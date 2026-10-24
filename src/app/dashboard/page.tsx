@@ -38,17 +38,19 @@ export default function DashboardPage() {
   }
 
   async function createChat() {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: newTitle || "Yeni Sohbet" }),
-      credentials: "include",
-    })
-    if (!res.ok) return
-    const data = await res.json()
-    setChats([data.chat, ...chats])
-    setNewTitle("")
-    window.location.href = `/chat/${data.chat.id}`
+    try{
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle || "Yeni Sohbet" }),
+        credentials: "include",
+      })
+      const data = await res.json()
+      if (!res.ok){ alert(data.error || "Oluşturulamadı - giriş yap"); return }
+      setChats([data.chat, ...chats])
+      setNewTitle("")
+      window.location.href = `/chat/${data.chat.id}`
+    }catch(e:any){ alert("Hata: "+e.message)}
   }
 
   async function deleteChat(id: string) {

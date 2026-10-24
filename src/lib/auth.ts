@@ -128,6 +128,14 @@ export function isAdmin(user: SessionUser | null): boolean {
   return Boolean(user && user.role === "admin")
 }
 
+export function getCurrentUserFromRequest(req: { cookies: { get: (name: string) => { value: string } | undefined } }): SessionUser | null {
+  try {
+    const token = req.cookies.get(SESSION_NAME)?.value
+    if (!token) return null
+    return validateSession(token)
+  } catch { return null }
+}
+
 export function setSessionCookie(value: string, options: { maxAge?: number; path?: string } = {}) {
   const maxAge = options.maxAge ?? 60 * 60 * 24 * 7
   return `${SESSION_NAME}=${value}; Path=${options.path ?? "/"}; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`

@@ -43,6 +43,10 @@ export default function ChatPage() {
   const [lastDecision, setLastDecision] = useState<any>(null)
   const [typingId, setTypingId] = useState<string | null>(null)
   const [typedContent, setTypedContent] = useState<Record<string,string>>({})
+  const [attachedFile, setAttachedFile] = useState<{ name:string, dataUrl:string, type:string } | null>(null)
+  const [recording, setRecording] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
   async function load() {
@@ -80,13 +84,57 @@ export default function ChatPage() {
     return ()=>clearInterval(timer)
   },[typingId, messages])
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if(!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setAttachedFile({ name: file.name, dataUrl: reader.result as string, type: file.type })
+    }
+    reader.readAsDataURL(file)
+  }
+  const startRecording = async () => {
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true })
+      const mr = new MediaRecorder(stream)
+      const chunks: BlobPart[] = []
+      mr.ondataavailable = e=>chunks.push(e.data)
+      mr.onstop = async () => {
+        const blob = new Blob(chunks, { type:"audio/webm" })
+        setStatus("Groq Whisper yazıya çeviriyor...")
+        const fd = new FormData()
+        fd.append("file", blob, "ses.webm")
+        try{
+          const r = await fetch("/api/stt",{ method:"POST", body: fd, credentials:"include"})
+          const j = await r.json()
+          if(j.ok && j.text) setInput(prev=> prev + (prev? " " : "") + j.text)
+          else setStatus("STT hata: "+ (j.error||"bilinmiyor"))
+        }catch(e:any){ setStatus("STT hata: "+e.message) }
+        setRecording(false)
+        stream.getTracks().forEach(t=>t.stop())
+      }
+      mediaRecorderRef.current = mr
+      mr.start()
+      setRecording(true)
+      setStatus("🎤 Kaydediyor... tekrar bas durdur")
+    }catch{ alert("Mikrofon izni ver") }
+  }
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop()
+    setRecording(false)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!input.trim() || sending) return
-    const userMsg = { id: "tmp-" + Date.now(), sender: "user" as const, content: input, createdAt: new Date().toISOString() }
+    if ((!input.trim() && !attachedFile) || sending) return
+    let contentToSend = input
+    if(attachedFile){
+      // foto/dosya: agent için base64 + isim ekle
+      contentToSend += `\n[Dosya: ${attachedFile.name} - ${attachedFile.type}]\n${attachedFile.dataUrl.slice(0, 8000)}`
+    }
+    const userMsg = { id: "tmp-" + Date.now(), sender: "user" as const, content: input + (attachedFile? ` 📎 ${attachedFile.name}` : ""), createdAt: new Date().toISOString() }
     setMessages((m) => [...m, userMsg])
     setSending(true)
-    // Orchestration check
     const plan = planComplexTask(input)
     if(plan){
       setStatus(`🧩 Çoklu görev algılandı: ${plan.task} — ${plan.steps.length} adım: ${plan.steps.map(s=>s.description).join(" → ")}`)
@@ -94,8 +142,9 @@ export default function ChatPage() {
       setStatus("Agent rota çiziyor… (görsel→FLUX, kod→GPT-OSS 120B, akıl→Reasoner)")
     }
     setLimitExhausted(false)
-    const bodyMsg = input
+    const bodyMsg = contentToSend
     setInput("")
+    setAttachedFile(null)
 
     try {
       const payload: any = { content: bodyMsg, mode: "auto" }
@@ -322,10 +371,22 @@ export default function ChatPage() {
         </div>
       )}
 
+      {attachedFile && (
+        <div className="mx-auto w-full max-w-3xl px-4 pb-2">
+          <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2 text-xs">
+            <span className="truncate">📎 {attachedFile.name} ({attachedFile.type})</span>
+            {attachedFile.type.startsWith("image/") && <img src={attachedFile.dataUrl} alt="preview" className="h-10 w-10 rounded object-cover"/>}
+            <button onClick={()=>setAttachedFile(null)} className="ml-auto rounded-full bg-red-600 px-2 py-1 text-white">Kaldır</button>
+          </div>
+        </div>
+      )}
       {/* YAZMA ÇUBUĞU */}
       <div className="sticky bottom-0 border-t border-zinc-800 bg-zinc-950">
         <div className="mx-auto max-w-3xl px-4 py-3">
+          <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.txt" className="hidden" onChange={handleFileChange}/>
           <form onSubmit={handleSubmit} className="flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-2 shadow-lg focus-within:border-white focus-within:ring-1 focus-within:ring-white">
+            <Button type="button" variant="ghost" onClick={()=>fileInputRef.current?.click()} className="h-10 w-10 shrink-0 rounded-xl bg-zinc-800 text-zinc-400 hover:bg-white hover:text-black">📎</Button>
+            <Button type="button" variant="ghost" onClick={recording ? stopRecording : startRecording} className={`h-10 w-10 shrink-0 rounded-xl ${recording ? "bg-red-600 text-white animate-pulse" : "bg-zinc-800 text-zinc-400 hover:bg-white hover:text-black"}`}>🎤</Button>
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -335,16 +396,16 @@ export default function ChatPage() {
                   handleSubmit(e as any)
                 }
               }}
-              placeholder="Agent'a yaz… (satış sitesi → çoklu görev, köpek çiz → FLUX, kod → GPT-OSS 120B)"
+              placeholder="Agent'a yaz… dosya ekle 📎 veya sesle 🎤 (Groq STT) → otomatik yaz"
               rows={1}
               disabled={sending}
               className="max-h-32 min-h-[44px] flex-1 resize-none border-0 bg-transparent text-sm placeholder:text-zinc-500 focus:ring-0 focus-visible:ring-0 shadow-none"
             />
-            <Button type="submit" disabled={sending || !input.trim()} className="h-10 w-10 shrink-0 rounded-xl bg-white p-0 text-black hover:bg-zinc-200">
+            <Button type="submit" disabled={sending || (!input.trim() && !attachedFile)} className="h-10 w-10 shrink-0 rounded-xl bg-white p-0 text-black hover:bg-zinc-200">
               {sending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </form>
-          <p className="mt-2 text-center text-[11px] text-zinc-500">Enter gönderir • Shift+Enter yeni satır • Supabase + Drive oto yedek ✓ • Auto-scroll kapalı • Kod kutusu & PDF aktif</p>
+          <p className="mt-2 text-center text-[11px] text-zinc-500">Enter gönderir • Shift+Enter yeni satır • 📎 Dosya/foto Agent'a • 🎤 Groq Whisper STT → arkadaşına da • Supabase + Drive oto yedek ✓</p>
         </div>
       </div>
         </div>

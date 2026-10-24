@@ -18,14 +18,15 @@ export function Navbar() {
   const [unread, setUnread] = useState(0)
 
   useEffect(() => {
-    try {
-      const m = document.cookie.match(/sucuk_session=([^;]+)/)
-      if (m) {
-        const payload = JSON.parse(atob(m[1].split(".")[0].replace(/-/g, "+").replace(/_/g, "/")))
-        setUser({ username: payload.u, role: payload.r })
-      }
-    } catch {}
-    // bildirim say poll
+    // HttpOnly cookie JS'ten okunamaz - /api/auth/me ile al
+    const loadUser = async () => {
+      try {
+        const r = await fetch("/api/auth/me", { credentials: "include" })
+        const j = await r.json()
+        if (j.authenticated && j.user) setUser({ username: j.user.username, role: j.user.role })
+      } catch {}
+    }
+    loadUser()
     const loadNotifs = async () => {
       try {
         const r = await fetch("/api/notifications", { credentials: "include" })
