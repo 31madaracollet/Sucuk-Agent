@@ -2,11 +2,12 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { Bot, Shield, Users, MessageCircle, Settings, LogOut, Menu, X, Plug, Bell } from "lucide-react"
+import { Bot, Shield, Users, MessageCircle, Settings, LogOut, Menu, X, Plug, Bell, Code2 } from "lucide-react"
 
 const navItems = [
   { href: "/dashboard", label: "Sohbet", icon: MessageCircle, hint: "Sohbet ekranı: tüm konuşmaların, Drive yedek тут" },
   { href: "/friends", label: "Arkadaşlar", icon: Users, hint: "Arkadaş ekle & DM (Supabase realtime) + Drive yedek" },
+  { href: "/editor", label: "Editör", icon: Code2, hint: "Yerleşik Kod Editörü — AI yazar/test eder" },
   { href: "/workspace", label: "Projeler", icon: Plug, hint: "Arkadaşlarla proje yap & Bağlantılar/Araçlar" },
   { href: "/settings", label: "Ayarlar", icon: Settings, hint: "Ayarlar" },
 ]

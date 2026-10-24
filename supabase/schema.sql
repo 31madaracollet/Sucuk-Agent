@@ -148,3 +148,10 @@ alter table public.project_members enable row level security;
 create policy "notifications_all" on public.notifications for all using (true) with check (true);
 create policy "projects_all" on public.projects for all using (true) with check (true);
 create policy "project_members_all" on public.project_members for all using (true) with check (true);
+
+-- 11. Medya genişletmesi (WhatsApp benzeri: foto/video/ses Drive'a, Supabase'te görüntülenir)
+alter table public.direct_messages add column if not exists media_url text;
+alter table public.direct_messages add column if not exists media_type text check (media_type in ('image','video','audio'));
+
+-- 12. Bellek temizliği için updated_at index (1 hafta kuralı)
+create index if not exists idx_chats_updated_at on public.chats(updated_at);

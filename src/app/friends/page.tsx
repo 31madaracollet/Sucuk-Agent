@@ -1,11 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Users, User, UserPlus, MessageCircle, Bell, FolderKanban, HardDrive, Sparkles, Send, Check, ExternalLink } from "lucide-react"
+import { useEffect, useState, useRef } from "react"
+import { Users, User, UserPlus, MessageCircle, Bell, FolderKanban, HardDrive, Sparkles, Send, Check, ExternalLink, Image as ImageIcon, Video, Mic, Paperclip } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Sidebar } from "@/components/layout/sidebar"
+import { Navbar } from "@/components/layout/navbar"
 
 type Tab = "friends" | "notifs" | "projects" | "drive"
 
@@ -14,6 +16,7 @@ export default function FriendsPage() {
   const [friendships, setFriendships] = useState<any[]>([])
   const [dms, setDms] = useState<any[]>([])
   const [otherId, setOtherId] = useState("")
+  const [otherName, setOtherName] = useState("")
   const [newMessage, setNewMessage] = useState("")
   const [addId, setAddId] = useState("")
   const [notifications, setNotifications] = useState<any[]>([])
@@ -24,6 +27,9 @@ export default function FriendsPage() {
   const [inviteUser, setInviteUser] = useState("")
   const [inviteProjectId, setInviteProjectId] = useState("")
   const [loading, setLoading] = useState(true)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [recording, setRecording] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
 
   async function loadFriends() {
     const fRes = await fetch("/api/friends", { credentials: "include" })
@@ -51,6 +57,12 @@ export default function FriendsPage() {
   }
   useEffect(() => { loadAll() }, [])
   useEffect(() => { if (otherId) loadFriends() }, [otherId])
+  // adres çubuğu ?dm= parametresi
+  useEffect(()=>{
+    const params = new URLSearchParams(window.location.search)
+    const dm = params.get("dm")
+    if(dm) setOtherId(dm)
+  },[])
 
   async function addFriend() {
     if (!addId.trim()) return
@@ -63,6 +75,36 @@ export default function FriendsPage() {
     await fetch("/api/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ receiverId: otherId, content: newMessage }), credentials: "include" })
     setNewMessage("")
     loadFriends()
+  }
+  async function sendMedia(file: File){
+    if(!otherId) return
+    const fd = new FormData()
+    fd.append("file", file)
+    fd.append("receiverId", otherId)
+    fd.append("content", newMessage)
+    const res = await fetch("/api/media/upload", { method:"POST", body: fd, credentials:"include" })
+    if(res.ok) { setNewMessage(""); loadFriends() } else alert("Medya gönderilemedi")
+  }
+  const startRecording = async () => {
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true })
+      const mr = new MediaRecorder(stream)
+      const chunks: BlobPart[] = []
+      mr.ondataavailable = e=>chunks.push(e.data)
+      mr.onstop = async ()=>{
+        const blob = new Blob(chunks, { type:"audio/webm" })
+        const file = new File([blob], `ses-${Date.now()}.webm`, { type:"audio/webm" })
+        await sendMedia(file)
+        stream.getTracks().forEach(t=>t.stop())
+      }
+      mediaRecorderRef.current = mr
+      mr.start()
+      setRecording(true)
+    }catch{ alert("Mikrofon izni gerekli") }
+  }
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop()
+    setRecording(false)
   }
   async function markRead(id: string) {
     await fetch("/api/notifications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }), credentials: "include" })
@@ -104,7 +146,7 @@ export default function FriendsPage() {
     const a = document.createElement("a")
     a.href = url; a.download = `sucuk-drive-yedek-${new Date().toISOString().slice(0,10)}.json`; a.click()
     URL.revokeObjectURL(url)
-    alert("Drive yedek indirildi — Google Drive'a yükleyebilirsin. Supabase'de kalıcı zaten.")
+    alert("Drive yedek indirildi — Google Drive'a yükleyebilirsin. Oto yedek aktif: Supabase + Drive.")
   }
 
   if (loading) return <div className="p-10 text-zinc-500">Yükleniyor...</div>
@@ -114,19 +156,22 @@ export default function FriendsPage() {
   const unread = notifications.filter(n => !n.read).length
 
   return (
-    <div className="mx-auto max-w-5xl px-4 md:px-6 py-8 space-y-6">
+    <>
+      <Navbar/>
+      <div className="flex">
+        <Sidebar/>
+        <div className="flex-1 mx-auto max-w-5xl px-4 md:px-6 py-8 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-2"><Users className="h-5 w-5" /> Arkadaşlar</h1>
-          <p className="text-sm text-zinc-500">Bildirimler, DM, projeler, Drive yedek — birlikte Agent kullan.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-2"><Users className="h-5 w-5" /> Arkadaşlar — WhatsApp tarzı DM</h1>
+          <p className="text-sm text-zinc-500">Foto/video/ses gönder, Drive'a yüklenir, Supabase'te görülür. Varsayılan hesaplar zaten arkadaş.</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="hidden sm:flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400"><Sparkles className="h-3 w-3" /> Siyah-Beyaz Cihaz</span>
+          <span className="hidden sm:flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400"><Sparkles className="h-3 w-3" /> WhatsApp benzeri</span>
           <Button variant="outline" className="rounded-full border-zinc-800 bg-zinc-900 text-zinc-300" onClick={exportAllChatsToDrive}><HardDrive className="h-4 w-4" /> Drive Yedek</Button>
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-2 overflow-x-auto">
         {(["friends","notifs","projects","drive"] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} className={`rounded-full px-4 py-2 text-sm font-medium border transition whitespace-nowrap ${tab===t ? "bg-white text-black border-white" : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600"}`}>
@@ -142,21 +187,21 @@ export default function FriendsPage() {
         <>
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-2">
-              <CardHeader><CardTitle className="flex items-center gap-2"><UserPlus className="h-5 w-5" /> Arkadaş Ekle (kullanıcı adı ile)</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><UserPlus className="h-5 w-5" /> Arkadaş Ekle</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex gap-2">
-                  <Input placeholder="örn. Pirensine, Sucuk9977, yeni oluşturduğun kullanıcı" value={addId} onChange={e=>setAddId(e.target.value)} />
+                  <Input placeholder="örn. Pirensine, Sucuk9977" value={addId} onChange={e=>setAddId(e.target.value)} />
                   <Button onClick={addFriend} className="rounded-full bg-white text-black hover:bg-zinc-200">Ekle</Button>
                 </div>
-                <p className="text-xs text-zinc-500">Adminin eklediği herkes burada eklenebilir. İstek gider, karşı taraf bildirimden onaylar.</p>
+                <p className="text-xs text-zinc-500">Kesinlikle arkadaş ekleme aktif — Supabase üzerinden anlık.</p>
               </CardContent>
             </Card>
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" /> Bekleyen İstekler</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" /> Bekleyen</CardTitle></CardHeader>
               <CardContent>
                 {pending.length===0 ? <p className="text-sm text-zinc-500 text-center py-4">Bekleyen yok.</p> : pending.map(f=>(
                   <div key={f.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 p-3 mb-2">
-                    <span className="text-sm text-white">{f.friendId}</span>
+                    <span className="text-sm text-white">{f.friend?.username ?? f.friendId}</span>
                     <Button size="sm" className="rounded-full bg-white text-black" onClick={async()=>{ await fetch("/api/friends",{method:"PATCH", headers:{"Content-Type":"application/json"}, body: JSON.stringify({id:f.id}), credentials:"include"}); loadFriends(); loadNotifs() }}><Check className="h-3 w-3" /> Onayla</Button>
                   </div>
                 ))}
@@ -166,42 +211,54 @@ export default function FriendsPage() {
 
           <div className="grid gap-4 lg:grid-cols-3">
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Arkadaşların</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Rehber</CardTitle></CardHeader>
               <CardContent className="space-y-2">
-                {accepted.length===0 ? <p className="text-sm text-zinc-500 text-center py-4">Henüz yok — yukarıdan ekle.</p> : accepted.map(f=>(
-                  <button key={f.id} onClick={()=>setOtherId(f.friendId || f.userId)} className={`w-full flex items-center justify-between rounded-xl border p-3 text-left ${otherId===(f.friendId||f.userId) ? "border-white bg-zinc-950" : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"}`}>
-                    <span className="flex items-center gap-2 text-sm text-white"><User className="h-4 w-4 text-zinc-500" /> {f.friendId || f.userId}</span>
-                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-black">DM</span>
-                  </button>
-                ))}
+                {accepted.length===0 ? <p className="text-sm text-zinc-500 text-center py-4">Yok — Sucuk9977 & Pirensine varsayılan olarak arkadaş (seed).</p> : accepted.map(f=>{
+                  const fid = f.friend?.id ?? f.friendId ?? f.friend_id ?? f.friendId
+                  const name = f.friend?.username ?? f.friendId ?? "?"
+                  return (
+                    <button key={f.id} onClick={()=>{setOtherId(fid); setOtherName(name)}} className={`w-full flex items-center justify-between rounded-xl border p-3 text-left ${otherId===fid ? "border-white bg-zinc-950" : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"}`}>
+                      <span className="flex items-center gap-2 text-sm text-white"><User className="h-4 w-4 text-zinc-500" /> {name}</span>
+                      <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-black">DM</span>
+                    </button>
+                  )
+                })}
               </CardContent>
             </Card>
-            <Card className="lg:col-span-2 h-[520px] flex flex-col">
-              {!otherId ? <CardContent className="flex h-full flex-col items-center justify-center text-zinc-500"><MessageCircle className="h-12 w-12 mb-3 opacity-50" /><p>Arkadaş seç, DM başlat — projeye davet de edebilirsin.</p></CardContent> : (
+            <Card className="lg:col-span-2 h-[560px] flex flex-col">
+              {!otherId ? <CardContent className="flex h-full flex-col items-center justify-center text-zinc-500"><MessageCircle className="h-12 w-12 mb-3 opacity-50" /><p>Arkadaş seç, DM başlat — foto/video/ses atabilirsin.</p></CardContent> : (
                 <>
                   <CardHeader className="pb-2 border-b border-zinc-800">
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2 font-medium text-white"><User className="h-5 w-5 text-zinc-400" /> {otherId}</span>
+                      <span className="flex items-center gap-2 font-medium text-white"><User className="h-5 w-5 text-zinc-400" /> {otherName || otherId}</span>
                       <div className="flex items-center gap-2">
                         <Button size="sm" variant="outline" className="rounded-full" onClick={exportDM}><HardDrive className="h-3 w-3" /> DM Yedek</Button>
-                        <span className="text-[10px] text-emerald-400 flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Çevrimiçi</span>
+                        <span className="text-[10px] text-emerald-400 flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Drive'a yazılıyor</span>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="flex-1 overflow-y-auto p-4 space-y-3">
-                    {dms.length===0 ? <p className="text-center text-sm text-zinc-500">Henüz mesaj yok.</p> : dms.map(m=>(
-                      <div key={m.id} className={`flex ${m.senderId==="me"?"justify-end":"justify-start"}`}>
-                        <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${m.senderId==="me"?"bg-white text-black":"bg-zinc-950 border border-zinc-800 text-zinc-100"}`}>
-                          {m.content}
-                          <div className="text-[10px] opacity-60 mt-1">{new Date(m.createdAt).toLocaleTimeString("tr-TR")}</div>
+                  <CardContent className="flex-1 overflow-y-auto p-4 space-y-3 bg-zinc-950">
+                    {dms.length===0 ? <p className="text-center text-sm text-zinc-500">Henüz mesaj yok — WhatsApp gibi foto/video/ses at.</p> : dms.map((m:any)=>(
+                      <div key={m.id} className={`flex ${m.senderId===otherId ? "justify-start" : "justify-end"}`}>
+                        <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${m.senderId===otherId?"bg-zinc-900 border border-zinc-800 text-zinc-100":"bg-white text-black"}`}>
+                          {m.mediaUrl && m.mediaType==="image" && <img src={m.mediaUrl} alt="media" className="max-w-[220px] rounded-xl mb-2"/>}
+                          {m.mediaUrl && m.mediaType==="video" && <video src={m.mediaUrl} controls className="max-w-[220px] rounded-xl mb-2"/>}
+                          {m.mediaUrl && m.mediaType==="audio" && <audio src={m.mediaUrl} controls className="w-full mb-2"/>}
+                          {!m.mediaUrl && m.content?.startsWith("data:") && m.content.includes("base64") && m.content.startsWith("data:image") && <img src={m.content} alt="media" className="max-w-[220px] rounded-xl mb-2"/>}
+                          <p>{m.content && !m.content.startsWith("data:") ? m.content : (!m.mediaUrl ? "📎 Medya" : "")}</p>
+                          <div className="text-[10px] opacity-60 mt-1">{new Date(m.createdAt).toLocaleTimeString("tr-TR")} • {m.mediaType ? `Drive: ${m.mediaType}` : "Supabase"}</div>
                         </div>
                       </div>
                     ))}
                   </CardContent>
-                  <form onSubmit={e=>{e.preventDefault(); sendMessage()}} className="flex gap-2 border-t border-zinc-800 p-3">
-                    <Input placeholder="Mesaj yaz..." value={newMessage} onChange={e=>setNewMessage(e.target.value)} />
-                    <Button type="submit" className="rounded-full bg-white text-black"><Send className="h-4 w-4" /></Button>
-                  </form>
+                  <div className="flex gap-2 border-t border-zinc-800 p-3 bg-zinc-900">
+                    <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={e=>{const f=e.target.files?.[0]; if(f) sendMedia(f)}}/>
+                    <Button size="sm" variant="outline" className="rounded-full" onClick={()=>fileInputRef.current?.click()}><Paperclip className="h-4 w-4"/></Button>
+                    <Button size="sm" variant="outline" className="rounded-full" onClick={()=>fileInputRef.current?.click()}><ImageIcon className="h-4 w-4"/></Button>
+                    <Button size="sm" variant={recording?"default":"outline"} className="rounded-full" onClick={recording ? stopRecording : startRecording}>{recording ? "⏹️" : <Mic className="h-4 w-4"/>}</Button>
+                    <Input placeholder="Mesaj yaz..." value={newMessage} onChange={e=>setNewMessage(e.target.value)} onKeyDown={e=>e.key==="Enter" && sendMessage()} className="bg-zinc-950 border-zinc-800 text-white"/>
+                    <Button onClick={sendMessage} className="rounded-full bg-white text-black"><Send className="h-4 w-4" /></Button>
+                  </div>
                 </>
               )}
             </Card>
@@ -233,13 +290,12 @@ export default function FriendsPage() {
       {tab==="projects" && (
         <div className="space-y-4">
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><FolderKanban className="h-5 w-5" /> Proje Oluştur — arkadaşlarla ortak workspace</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><FolderKanban className="h-5 w-5" /> Proje Oluştur — arkadaşlarla ortak</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <Input placeholder="Proje adı (örn. YKS Çalışma, Oyun Geliştirme)" value={projName} onChange={e=>setProjName(e.target.value)} />
+              <Input placeholder="Proje adı" value={projName} onChange={e=>setProjName(e.target.value)} />
               <Textarea placeholder="Açıklama" value={projDesc} onChange={e=>setProjDesc(e.target.value)} rows={2} />
-              <Input placeholder="Davet et: kullanıcı adları virgülle (örn. Pirensine, SigmaAkif2013)" value={projInvites} onChange={e=>setProjInvites(e.target.value)} />
+              <Input placeholder="Davet: kullanıcı adları virgülle" value={projInvites} onChange={e=>setProjInvites(e.target.value)} />
               <Button onClick={createProject} className="rounded-full bg-white text-black">Oluştur ve Davet Et</Button>
-              <p className="text-xs text-zinc-500">Proje üyeleri aynı Agent'ı paylaşır, bildirim alır, DM'den koordine olur.</p>
             </CardContent>
           </Card>
           <Card>
@@ -249,7 +305,6 @@ export default function FriendsPage() {
                 <div key={p.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
                   <p className="text-sm font-medium text-white">{p.name}</p>
                   <p className="text-xs text-zinc-500">{p.description} • {new Date(p.createdAt).toLocaleString("tr-TR")}</p>
-                  <p className="text-xs text-zinc-600 mt-1">ID: {p.id}</p>
                 </div>
               ))}
               <div className="flex gap-2 pt-2 border-t border-zinc-800 mt-3">
@@ -264,17 +319,18 @@ export default function FriendsPage() {
 
       {tab==="drive" && (
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5" /> Sohbetler → Drive Yedek</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="h-5 w-5" /> Drive Yedek — oto aktif</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-zinc-400">Tüm sohbetlerin Supabase'de kalıcı (artık kaybolmuyor). Buradan tek tıkla JSON indirip Google Drive'a yükleyebilirsin. TeraBox/Drive entegrasyonları için Workspace'e bak.</p>
+            <p className="text-sm text-zinc-400">Tüm sohbetler + DM'ler Supabase'e anlık yazılır, medya Drive'a yüklenir, tüm sohbetler tek tıkla Drive'a yedeklenir.</p>
             <div className="flex gap-2">
-              <Button onClick={exportAllChatsToDrive} className="rounded-full bg-white text-black">Tüm Sohbetleri İndir (JSON)</Button>
-              <Button variant="outline" className="rounded-full" onClick={()=>window.open("/workspace","_blank")}><ExternalLink className="h-4 w-4" /> Workspace & Entegrasyonlar</Button>
+              <Button onClick={exportAllChatsToDrive} className="rounded-full bg-white text-black">Tüm Sohbetleri İndir (JSON) + Drive</Button>
+              <Button variant="outline" className="rounded-full" onClick={()=>window.open("/workspace","_blank")}><ExternalLink className="h-4 w-4" /> Workspace</Button>
             </div>
-            <p className="text-xs text-zinc-500">Not: Tekrar giriş yapınca sohbetler gelmiyorsa Supabase env'leri kontrol et — artık snake_case düzeltildi, persistence çalışıyor.</p>
           </CardContent>
         </Card>
       )}
-    </div>
+        </div>
+      </div>
+    </>
   )
 }

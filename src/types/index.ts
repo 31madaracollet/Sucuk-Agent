@@ -56,6 +56,8 @@ export interface DirectMessage {
   senderId: string;
   receiverId: string;
   content: string;
+  mediaUrl?: string | null;
+  mediaType?: "image" | "video" | "audio" | null;
   read: boolean;
   createdAt: string;
 }
@@ -114,7 +116,7 @@ export interface ProjectMember {
 
 export interface IntegrationConfig {
   id: string
-  provider: "supabase" | "github" | "google_drive" | "terabox" | "workspace" | "excel" | "notion" | "vercel"
+  provider: "supabase" | "github" | "google_drive" | "terabox" | "workspace" | "excel" | "notion" | "vercel" | "google_workspace" | "maps" | "huggingface" | "nvidia" | "slack" | "discord"
   name: string
   connected: boolean
   config: any

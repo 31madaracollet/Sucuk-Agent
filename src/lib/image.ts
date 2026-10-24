@@ -24,8 +24,14 @@ function friendlyHfError(status: number, body: string): string {
   return `HF hata (${status}): ${b}`
 }
 
+import { sanitizeImagePrompt, getStockImageFallback } from "./prompt-guard"
+
 export async function generateImage(prompt: string): Promise<ImageResult> {
-  const token = process.env.HUGGINGFACE_API_TOKEN
+  // Prompt Guard — saçma tutarsız promptları engelle
+  const guard = sanitizeImagePrompt(prompt)
+  if(!guard.allowed) return { ok:false, error: guard.reason || "Prompt reddedildi" }
+  prompt = guard.prompt
+  const token = process.env.HUGGINGFACE_API_TOKEN || process.env.HUGGINGFACE_API_TOKEN_2 || process.env.HUGGINGFACE_API_TOKEN_3
 
   // Güncel HF modelleri — SDXL deprecated, yerine SD3 + FLUX dene
   // hf-inference doküman örneği: stabilityai/stable-diffusion-3-medium-diffusers [9], FLUX.1-dev/schnell [2][5]
@@ -117,12 +123,25 @@ export async function generateImage(prompt: string): Promise<ImageResult> {
     lastErr += ` | Pollinations genel hata: ${e?.message || e}`
   }
 
+  // Token bitti — stok görsel fallback (Unsplash/Picsum)
+  try {
+    const stockUrl = getStockImageFallback(prompt)
+    const res = await fetch(stockUrl, { headers: { Accept: "image/*" } })
+    if (res.ok) {
+      const ct = res.headers.get("content-type") ?? "image/jpeg"
+      if (ct.startsWith("image/")) {
+        const buf = Buffer.from(await res.arrayBuffer())
+        if (buf.length > 1000) return { ok: true, buffer: buf, contentType: ct }
+      }
+    }
+  } catch {}
+
   // Hiçbiri olmadıysa anlamlı hata döndür
   if (lastErr.includes("410") || lastErr.includes("deprecated")) {
     return {
       ok: false,
-      error: `HF SDXL kaldırıldı (410 deprecated) [1]. Güncel model denendi ama olmadı. Pollinations fallback de başarısız. Detay: ${lastErr.slice(0, 1200)}\n\nGeçici çözüm: Prompt'u daha kısa dene veya 10 sn sonra tekrar dene (model soğuk). /api/debug kontrol edebilirsin.`,
+      error: `HF SDXL kaldırıldı (410 deprecated) [1]. Güncel model denendi ama olmadı. Pollinations fallback de başarısız. Stok görsel de denenemedi. Detay: ${lastErr.slice(0, 1200)}\n\nGeçici çözüm: Prompt'u daha kısa dene veya 10 sn sonra tekrar dene (model soğuk). /api/debug kontrol edebilirsin.`,
     }
   }
-  return { ok: false, error: lastErr || "Tüm görsel modelleri başarısız oldu." }
+  return { ok: false, error: lastErr || "Tüm görsel modelleri başarısız oldu — stok görsel deneniyor." }
 }

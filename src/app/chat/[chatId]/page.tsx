@@ -13,43 +13,18 @@ import {
   RefreshCw,
   Info,
   AlertCircle,
-  ChevronDown,
-  Settings2,
   ShieldCheck,
   Zap,
-  Cpu,
   Wand2,
+  Download,
+  FileText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-
-type CatalogEntry = { provider: string; model: string; label: string; group: string; task: string; free: boolean }
-
-const MODEL_OPTIONS: CatalogEntry[] = [
-  // Genel — beleş öncelikli
-  { provider: "groq", model: "openai/gpt-oss-20b", label: "GPT-OSS 20B ⚡", group: "Genel • Beleş", task: "genel", free: true },
-  { provider: "google", model: "gemini-3.8-flash", label: "Gemini 3.8 Flash", group: "Genel • Beleş", task: "genel", free: true },
-  { provider: "huggingface", model: "Qwen/Qwen2.5-7B-Instruct", label: "Qwen 2.5 7B", group: "Genel • Beleş", task: "genel", free: true },
-  { provider: "openai", model: "gpt-4o-mini", label: "GPT-4o mini", group: "Genel", task: "genel", free: false },
-  // Kod
-  { provider: "groq", model: "openai/gpt-oss-120b", label: "GPT-OSS 120B 🧠", group: "Kod • Beleş", task: "kod", free: true },
-  { provider: "openrouter", model: "anthropic/claude-sonnet-5.5", label: "Claude Sonnet 5.5", group: "Kod", task: "kod", free: false },
-  { provider: "huggingface", model: "Qwen/Qwen2.5-Coder-7B-Instruct", label: "Qwen Coder 7B", group: "Kod • Beleş", task: "kod", free: true },
-  { provider: "kimi", model: "moonshot-v1-32k", label: "Moonshot 32K", group: "Kod", task: "kod", free: false },
-  // Akıl
-  { provider: "deepseek", model: "deepseek-reasoner", label: "DeepSeek Reasoner", group: "Akıl", task: "akıl", free: false },
-  { provider: "nvidia", model: "nvidia/llama-3.3-nemotron-super-49b-v1", label: "Nemotron Super 49B", group: "Akıl", task: "akıl", free: false },
-  { provider: "openai", model: "gpt-4o", label: "GPT-4o", group: "Akıl", task: "akıl", free: false },
-  // Görsel — Hugging Face
-  { provider: "huggingface", model: "black-forest-labs/FLUX.1-schnell", label: "FLUX.1 Schnell", group: "Görsel • Beleş", task: "gorsel", free: true },
-  { provider: "huggingface", model: "stabilityai/stable-diffusion-xl-base-1.0", label: "SDXL 1.0", group: "Görsel • Beleş", task: "gorsel", free: true },
-  // Arama / diğer
-  { provider: "deepseek", model: "deepseek-chat", label: "DeepSeek Chat", group: "Genel", task: "genel", free: false },
-  { provider: "kimi", model: "moonshot-v1-8k", label: "Moonshot 8K", group: "Genel", task: "genel", free: false },
-  { provider: "google", model: "gemini-3.8-flash-lite", label: "Gemini 3.8 Lite", group: "Genel • Beleş", task: "genel", free: true },
-  { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free", label: "Llama 3.3 70B Free", group: "Genel • Beleş", task: "genel", free: true },
-  { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B", group: "Genel", task: "genel", free: false },
-]
+import { Sidebar } from "@/components/layout/sidebar"
+import { Navbar } from "@/components/layout/navbar"
+import { CodeBlock, parseMessageWithCode } from "@/components/ui/code-block"
+import { planComplexTask } from "@/lib/orchestrator"
 
 export default function ChatPage() {
   const router = useRouter()
@@ -59,7 +34,6 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<any[]>([])
   const [chat, setChat] = useState<any>(null)
   const [input, setInput] = useState("")
-  // sadece Agent - Düz kaldırıldı
   const mode = "auto" as const
   const [sending, setSending] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -88,10 +62,7 @@ export default function ChatPage() {
     return () => clearInterval(id)
   }, [chatId])
 
-  // auto kayma KAPALI - kullanıcı isteği: aşağı kayıp durmasın
-  // useEffect scroll kaldırıldı
-
-  // daktilo efekti - yeni asistan mesajını tane tane yaz
+  // daktilo efekti
   useEffect(()=>{
     if(!typingId) return
     const full = messages.find(m=>m.id===typingId)?.content || ""
@@ -115,7 +86,13 @@ export default function ChatPage() {
     const userMsg = { id: "tmp-" + Date.now(), sender: "user" as const, content: input, createdAt: new Date().toISOString() }
     setMessages((m) => [...m, userMsg])
     setSending(true)
-    setStatus("Agent rota çiziyor… (görsel→FLUX, kod→GPT-OSS 120B, akıl→Reasoner)")
+    // Orchestration check
+    const plan = planComplexTask(input)
+    if(plan){
+      setStatus(`🧩 Çoklu görev algılandı: ${plan.task} — ${plan.steps.length} adım: ${plan.steps.map(s=>s.description).join(" → ")}`)
+    } else {
+      setStatus("Agent rota çiziyor… (görsel→FLUX, kod→GPT-OSS 120B, akıl→Reasoner)")
+    }
     setLimitExhausted(false)
     const bodyMsg = input
     setInput("")
@@ -136,7 +113,7 @@ export default function ChatPage() {
         setUsedModel(data.usedModel ?? null)
         setLastDecision(data.decision ?? null)
         setLimitExhausted(Boolean(data.limitExhausted))
-        setStatus(data.limitExhausted ? "Limit doldu — yedek beleşe geçildi veya Düz mod önerildi" : null)
+        setStatus(data.limitExhausted ? "Limit doldu — yedek beleşe geçildi" : null)
         if (data.toolOutput) {
           setMessages((m) => [
             ...m,
@@ -152,10 +129,8 @@ export default function ChatPage() {
         const newId = "asst-" + Date.now()
         const asst = { id: newId, sender: "assistant" as const, content: data.assistant, provider: data.usedProvider, model: data.usedModel, createdAt: new Date().toISOString() }
         setMessages((m) => [...m, asst as any])
-        // tane tane yaz
         setTypedContent(prev=>({...prev, [newId]:""}))
         setTypingId(newId)
-        // Drive oto yedek tetikle (arka planda)
         fetch("/api/drive/auto", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ chatId }), credentials:"include" }).catch(()=>{})
 
       }
@@ -163,7 +138,7 @@ export default function ChatPage() {
       setMessages((m) => [...m, { id: "err2-" + Date.now(), sender: "assistant", content: `Bağlantı hatası: ${err?.message || String(err)}`, createdAt: new Date().toISOString() } as any])
     } finally {
       setSending(false)
-      setTimeout(() => setStatus(null), 3000)
+      setTimeout(() => setStatus(null), 4000)
     }
   }
 
@@ -186,7 +161,17 @@ export default function ChatPage() {
   function renderMessageContent(content: string, msgId?: string) {
     const display = msgId && typedContent[msgId] !== undefined ? typedContent[msgId] : content
     const toRender = display
-    const imgMatch = toRender.match(/!\[.*?\]\((data:image\/[^)]+)\)/)
+    // Kod blokları için CodeBlock kullan
+    const parts = parseMessageWithCode(toRender)
+    const hasCode = parts.some(p=>p.type==="code")
+    if(hasCode){
+      return (
+        <div className="space-y-2">
+          {parts.map((p,i)=> p.type==="code" ? <CodeBlock key={i} code={p.content} language={p.lang || "tsx"} prompt={content.slice(0,200)} /> : <span key={i} className="whitespace-pre-wrap break-words">{p.content}</span>)}
+        </div>
+      )
+    }
+    const imgMatch = toRender.match(/!\[.*?\]\(data:image\/[^)]+\)/)
     if (imgMatch) {
       const before = toRender.slice(0, imgMatch.index!)
       const after = toRender.slice(imgMatch.index! + imgMatch[0].length)
@@ -198,12 +183,37 @@ export default function ChatPage() {
         </>
       )
     }
+    // http görselleri de render et
+    const httpImg = toRender.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|webp)/i)
+    if(httpImg){
+      return (
+        <>
+          <span className="whitespace-pre-wrap break-words">{toRender}</span>
+          <img src={httpImg[0]} alt="stock" className="mt-3 max-w-full rounded-xl border border-zinc-800" />
+        </>
+      )
+    }
     return <span className="whitespace-pre-wrap break-words">{toRender}</span>
   }
 
+  async function downloadPDF(content: string, title: string){
+    const { jsPDF } = await import("jspdf")
+    const doc = new jsPDF()
+    doc.setFontSize(12)
+    doc.text(title, 10, 15)
+    const lines = doc.splitTextToSize(content, 180)
+    doc.setFontSize(10)
+    doc.text(lines, 10, 25)
+    doc.save(`${title.slice(0,30)}-${Date.now()}.pdf`)
+  }
+
   return (
-    <div className="flex min-h-[calc(100vh-56px)] flex-col bg-zinc-950 text-zinc-100">
-      {/* ÜST BAR — cihaz, siyah beyaz premium */}
+    <div className="flex flex-col min-h-screen bg-zinc-950 text-zinc-100">
+      <Navbar/>
+      <div className="flex flex-1">
+        <Sidebar/>
+        <div className="flex-1 flex flex-col min-h-[calc(100vh-56px)]">
+      {/* ÜST BAR */}
       <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -231,12 +241,12 @@ export default function ChatPage() {
         </div>
         <div className="mx-auto max-w-5xl px-4 pb-2">
           <p className="text-[11px] leading-relaxed text-zinc-500">
-            Agent: göreve göre beleşe öncelik verir — kod→GPT-OSS 120B, köpek çiz→FLUX.1 Schnell, akıl→Reasoner, genel→GPT-OSS 20B/Gemini 3.8. Supabase + Drive oto yedek aktif.
+            Agent: göreve göre beleşe öncelik verir — kod→GPT-OSS 120B, köpek çiz→FLUX.1 Schnell, akıl→Reasoner, genel→GPT-OSS 20B/Gemini 3.8. Supabase + Drive oto yedek aktif. Kod kutusu kopyala, PDF indir, tema otomatik.
           </p>
         </div>
       </div>
 
-      {/* MESAJLAR — ortalanmış premium */}
+      {/* MESAJLAR */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
           {messages.length === 0 && (
@@ -245,7 +255,7 @@ export default function ChatPage() {
                 <Sparkles className="h-7 w-7" />
               </div>
               <h3 className="text-lg font-semibold tracking-tight">Nasıl yardımcı olayım?</h3>
-              <p className="mt-1 max-w-md text-sm text-zinc-400">Beleş modellere öncelik veren siyah-beyaz cihaz. Kod, görsel, web arama ve derin düşünme tek yerde.</p>
+              <p className="mt-1 max-w-md text-sm text-zinc-400">Beleş modellere öncelik veren siyah-beyaz cihaz. Kod, görsel, web arama, editör ve derin düşünme tek yerde.</p>
               <div className="mt-6 grid w-full max-w-md grid-cols-2 gap-2">
                 <button onClick={() => setInput("Python ile todo uygulaması yaz")} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-white hover:bg-zinc-800 transition">
                   <Code2 className="mb-1 h-4 w-4 text-white" /><p className="text-xs font-medium">Kod yaz</p><p className="text-[11px] text-zinc-500">GPT-OSS 120B • beleş</p>
@@ -253,17 +263,16 @@ export default function ChatPage() {
                 <button onClick={() => setInput("Güncel yapay zeka haberlerini ara")} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-white hover:bg-zinc-800 transition">
                   <Search className="mb-1 h-4 w-4 text-white" /><p className="text-xs font-medium">Web'de ara</p><p className="text-[11px] text-zinc-500">Groq + web</p>
                 </button>
+                <button onClick={() => setInput("Satış ve alışveriş sitesi hazırla: ürün fotoğrafları ve kodları ile tam paket")} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-white hover:bg-zinc-800 transition">
+                  <ImageIcon className="mb-1 h-4 w-4 text-white" /><p className="text-xs font-medium">Satış Sitesi</p><p className="text-[11px] text-zinc-500">FLUX + DeepSeek + GitHub</p>
+                </button>
                 <button onClick={() => setInput("Uzay temalı bir köpek çiz, poster gibi olsun")} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-white hover:bg-zinc-800 transition">
                   <ImageIcon className="mb-1 h-4 w-4 text-white" /><p className="text-xs font-medium">Köpek çiz</p><p className="text-[11px] text-zinc-500">FLUX.1 • beleş</p>
                 </button>
-                <button onClick={() => setInput("Bu problemi adım adım çöz: ")} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left hover:border-white hover:bg-zinc-800 transition">
-                  <Brain className="mb-1 h-4 w-4 text-white" /><p className="text-xs font-medium">Derin düşün</p><p className="text-[11px] text-zinc-500">Reasoner • Nemotron</p>
-                </button>
               </div>
-              {/* Görev şeridi */}
               <div className="mt-6 flex flex-wrap justify-center gap-2 text-[11px]">
                 <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-zinc-400 flex items-center gap-1"><Zap className="h-3 w-3" /> Genel: GPT-OSS 20B • Gemini 3.8</span>
-                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-zinc-400 flex items-center gap-1"><Wand2 className="h-3 w-3" /> Görsel: FLUX.1 • SDXL (beleş)</span>
+                <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-zinc-400 flex items-center gap-1"><Wand2 className="h-3 w-3" /> Görsel: FLUX.1 • Prompt Guard + stok fallback</span>
               </div>
             </div>
           )}
@@ -285,9 +294,10 @@ export default function ChatPage() {
                       {renderMessageContent(msg.content, msg.id)}
                       {typingId===msg.id && <span className="inline-block w-1.5 h-4 bg-zinc-500 ml-0.5 animate-pulse align-middle">▌</span>}
                     </div>
-                    <p className="mt-1 text-[11px] text-zinc-500">
-                      {msg.provider ? providerLabel(msg.provider) : "Asistan"} {msg.model ? `• ${msg.model}` : ""} • {new Date(msg.createdAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
-                    </p>
+                    <div className="mt-1 flex items-center gap-2 text-[11px] text-zinc-500">
+                      <span>{msg.provider ? providerLabel(msg.provider) : "Asistan"} {msg.model ? `• ${msg.model}` : ""} • {new Date(msg.createdAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}</span>
+                      <button onClick={()=>downloadPDF(msg.content, `sucuk-${msg.id}`)} className="flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-1 text-xs hover:bg-white hover:text-black"><Download className="h-3 w-3"/> PDF</button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -307,12 +317,12 @@ export default function ChatPage() {
       {limitExhausted && (
         <div className="mx-auto w-full max-w-3xl px-4 pb-1">
           <div className="flex items-center gap-2 rounded-xl border border-red-900 bg-red-950 px-3 py-2 text-xs text-red-200">
-            <AlertCircle className="h-4 w-4" /> Kota doldu — yedek beleş modele geçildi. Ayarlar → sağlayıcı durumuna bak.
+            <AlertCircle className="h-4 w-4" /> Kota doldu — yedek beleş modele geçildi. Stok görsel fallback aktif.
           </div>
         </div>
       )}
 
-      {/* YAZMA ÇUBUĞU — premium cihaz */}
+      {/* YAZMA ÇUBUĞU */}
       <div className="sticky bottom-0 border-t border-zinc-800 bg-zinc-950">
         <div className="mx-auto max-w-3xl px-4 py-3">
           <form onSubmit={handleSubmit} className="flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-2 shadow-lg focus-within:border-white focus-within:ring-1 focus-within:ring-white">
@@ -325,7 +335,7 @@ export default function ChatPage() {
                   handleSubmit(e as any)
                 }
               }}
-              placeholder="Agent'a yaz… (köpek çiz → FLUX, kod → GPT-OSS 120B otomatik)"
+              placeholder="Agent'a yaz… (satış sitesi → çoklu görev, köpek çiz → FLUX, kod → GPT-OSS 120B)"
               rows={1}
               disabled={sending}
               className="max-h-32 min-h-[44px] flex-1 resize-none border-0 bg-transparent text-sm placeholder:text-zinc-500 focus:ring-0 focus-visible:ring-0 shadow-none"
@@ -334,7 +344,9 @@ export default function ChatPage() {
               {sending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </form>
-          <p className="mt-2 text-center text-[11px] text-zinc-500">Enter gönderir • Shift+Enter yeni satır • Supabase + Drive oto yedek ✓ • Auto-scroll kapalı</p>
+          <p className="mt-2 text-center text-[11px] text-zinc-500">Enter gönderir • Shift+Enter yeni satır • Supabase + Drive oto yedek ✓ • Auto-scroll kapalı • Kod kutusu & PDF aktif</p>
+        </div>
+      </div>
         </div>
       </div>
     </div>

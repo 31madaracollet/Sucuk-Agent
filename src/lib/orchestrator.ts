@@ -113,3 +113,58 @@ export const TASK_INFO: Record<string, { label: string; provider: ProviderId; mo
   arama: { label: "Web Arama", provider: "groq", model: "openai/gpt-oss-120b" },
   çeviri: { label: "Çeviri/Özet", provider: "google", model: "gemini-3.8-flash" },
 }
+
+/* Çoklu Görev Modüler Orchestration — örn. Satış sitesi */
+export interface OrchestrationPlan {
+  task: string
+  steps: { id: string, agent: string, provider: ProviderId, model: string, description: string }[]
+  github?: { repo: string, push: boolean }
+  vercel?: { deploy: boolean }
+  supabase?: { tables: string[] }
+}
+
+export function planComplexTask(prompt: string): OrchestrationPlan | null {
+  const m = prompt.toLowerCase()
+  // Satış / e-ticaret / alışveriş sitesi tetikleyicileri
+  if(m.includes("satış") || m.includes("satis") || m.includes("e-ticaret") || m.includes("eticaret") || m.includes("alışveriş") || m.includes("shop") || m.includes("store")) {
+    return {
+      task: "Satış ve Alışveriş Sitesi",
+      steps: [
+        { id:"1", agent:"planner", provider:"groq", model:"openai/gpt-oss-120b", description:"Görev dağılımı — ana AI mimariyi planlar" },
+        { id:"2", agent:"image", provider:"huggingface", model:"black-forest-labs/FLUX.1-schnell", description:"Ürün fotoğrafları — Hugging Face FLUX ile" },
+        { id:"3", agent:"code", provider:"deepseek", model:"deepseek-chat", description:"Kod — DeepSeek ile Next.js + Tailwind iskelet" },
+        { id:"4", agent:"text", provider:"openai", model:"gpt-4o", description:"Metinler — OpenAI/Groq ile ürün açıklamaları" },
+        { id:"5", agent:"code", provider:"google", model:"gemini-3.8-flash", description:"Metin/çeviri — Google Gemini ile SEO metinleri" },
+        { id:"6", agent:"deploy", provider:"groq", model:"openai/gpt-oss-20b", description:"GitHub'a aktar + Vercel publish" },
+      ],
+      github: { repo: "sucuk-shop", push: true },
+      vercel: { deploy: true },
+      supabase: { tables: ["products","orders","users"] },
+    }
+  }
+  if(m.includes("uygulama") || m.includes("app yap") || m.includes("modüler")) {
+    return {
+      task: "Modüler API Çağrıları",
+      steps: [
+        { id:"1", agent:"planner", provider:"groq", model:"openai/gpt-oss-120b", description:"Görev analizi" },
+        { id:"2", agent:"code", provider:"openrouter", model:"anthropic/claude-sonnet-5.5", description:"Kod — Claude" },
+        { id:"3", agent:"image", provider:"huggingface", model:"black-forest-labs/FLUX.1-schnell", description:"Görsel — FLUX" },
+        { id:"4", agent:"text", provider:"kimi", model:"moonshot-v1-32k", description:"Dokümantasyon — KIMI" },
+        { id:"5", agent:"deploy", provider:"nvidia", model:"nvidia/llama-3.3-nemotron-super-49b-v1", description:"Review — NVIDIA" },
+      ],
+      github: { repo: "sucuk-app", push: true },
+      vercel: { deploy: true },
+      supabase: { tables: ["app_data"] },
+    }
+  }
+  return null
+}
+
+export async function executeOrchestration(plan: OrchestrationPlan, apiCall: (step: any)=>Promise<any>): Promise<any[]> {
+  const results = []
+  for(const step of plan.steps) {
+    const res = await apiCall(step)
+    results.push({ step, result: res })
+  }
+  return results
+}

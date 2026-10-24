@@ -31,6 +31,24 @@ export async function POST(req: Request) {
   }
 }
 
+export async function PATCH(req: Request){
+  const user = getCurrentUser()
+  if (!user || !isAdmin(user)) return NextResponse.json({ error: "Yönetici yetkisi gerekli." }, { status: 403 })
+  const { id, username, role, password } = await req.json()
+  if(!id) return NextResponse.json({ error:"id gerekli" }, { status:400 })
+  const { supabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase")
+  const updates:any = {}
+  if(username) updates.username = username
+  if(role) updates.role = role
+  if(password) updates.password_hash = hashPassword(password)
+  if(Object.keys(updates).length===0) return NextResponse.json({ error:"Güncellenecek alan yok" }, { status:400 })
+  if(isSupabaseConfigured && supabaseAdmin){
+    const { error } = await supabaseAdmin.from("profiles").update(updates).eq("id", id)
+    if(error) return NextResponse.json({ error:error.message }, { status:500 })
+  }
+  return NextResponse.json({ ok:true })
+}
+
 export async function DELETE(req: Request) {
   const user = getCurrentUser()
   if (!user || !isAdmin(user)) return NextResponse.json({ error: "Yönetici yetkisi gerekli." }, { status: 403 })

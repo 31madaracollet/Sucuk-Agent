@@ -1,16 +1,18 @@
 "use client"
-
 import { useEffect, useState } from "react"
 import { Plus, MessageCircle, Trash2, Sparkles, HardDrive, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
+import { Sidebar } from "@/components/layout/sidebar"
+import { Navbar } from "@/components/layout/navbar"
 
 export default function DashboardPage() {
   const [chats, setChats] = useState<any[]>([])
   const [announcements, setAnnouncements] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [newTitle, setNewTitle] = useState("")
+  const [autoCreating, setAutoCreating] = useState(false)
 
   async function load() {
     const [cRes, aRes] = await Promise.all([
@@ -22,6 +24,17 @@ export default function DashboardPage() {
     setChats(cData.chats ?? [])
     setAnnouncements(aData.announcements ?? [])
     setLoading(false)
+    // 8. Uygulama açılışında otomatik yeni sohbet — eğer hiç sohbet yoksa
+    if((cData.chats ?? []).length === 0 && !autoCreating && cRes.ok){
+      setAutoCreating(true)
+      try{
+        const res = await fetch("/api/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ title:"Yeni Sohbet" }), credentials:"include"})
+        const data = await res.json()
+        if(data.chat){
+          window.location.href = `/chat/${data.chat.id}`
+        }
+      }catch{}
+    }
   }
 
   async function createChat() {
@@ -59,18 +72,41 @@ export default function DashboardPage() {
     URL.revokeObjectURL(url)
   }
 
+  async function downloadPDF() {
+    // Tüm sohbetleri PDF olarak indir
+    const { jsPDF } = await import("jspdf")
+    const doc = new jsPDF()
+    doc.setFontSize(14)
+    doc.text("Sucuk-Agent Sohbet Yedeği", 10, 15)
+    doc.setFontSize(10)
+    let y=25
+    for(const c of chats.slice(0,10)){
+      doc.text(`${c.title} — ${new Date(c.updatedAt).toLocaleString("tr-TR")}`, 10, y)
+      y+=7
+      if(y>280){ doc.addPage(); y=15 }
+    }
+    doc.save(`sucuk-agent-${new Date().toISOString().slice(0,10)}.pdf`)
+  }
+
   useEffect(() => { load() }, [])
 
   return (
-    <div className="mx-auto max-w-5xl px-4 md:px-6 py-8 space-y-6">
+    <>
+      <Navbar/>
+      <div className="flex">
+        <Sidebar/>
+        <div className="flex-1 mx-auto max-w-5xl px-4 md:px-6 py-8 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-zinc-400" /> Sohbetler
           </h1>
-          <p className="text-sm text-zinc-500">Supabase'e yazılır • Drive'a tek tık yedek • Arkadaşlarınla DM</p>
+          <p className="text-sm text-zinc-500">Supabase'e yazılır • Drive'a tek tık yedek • Arkadaşlarınla DM • Kalıcı geçmiş</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" className="rounded-full border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-white hover:text-black" onClick={downloadPDF}>
+            PDF İndir
+          </Button>
           <Button variant="outline" className="rounded-full border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-white hover:text-black" onClick={exportAll}>
             <HardDrive className="h-4 w-4" /> Drive'a Yedekle
           </Button>
@@ -110,7 +146,7 @@ export default function DashboardPage() {
 
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-2">
         <div className="flex items-center justify-between px-3 py-2 text-xs text-zinc-500">
-          <span>Sohbetler ({chats.length}) — birlikte kullanım: arkadaş ekle, aynı Agent'ı paylaş</span>
+          <span>Sohbetler ({chats.length}) — 1 hafta kullanılmayan silinir (admin hariç)</span>
           <span className="hidden sm:inline">Supabase • Vercel • Drive</span>
         </div>
         {loading ? (
@@ -118,7 +154,7 @@ export default function DashboardPage() {
         ) : chats.length === 0 ? (
           <Card className="border-zinc-800 bg-zinc-950">
             <CardContent className="py-12 text-center text-zinc-500">
-              <MessageCircle className="mx-auto h-8 w-8 text-zinc-600 mb-3" /> Henüz sohbet yok. Başlık yaz ve oluştur — Agent gerisini halleder.
+              <MessageCircle className="mx-auto h-8 w-8 text-zinc-600 mb-3" /> {autoCreating ? "Otomatik sohbet oluşturuluyor..." : "Henüz sohbet yok. Başlık yaz ve oluştur — Agent gerisini halleder."}
             </CardContent>
           </Card>
         ) : (
@@ -153,17 +189,19 @@ export default function DashboardPage() {
       <div className="grid md:grid-cols-3 gap-3">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
           <p className="text-sm font-medium">Birlikte kullan</p>
-          <p className="text-xs text-zinc-500 mt-1">Arkadaşlar → ekle/onayla, DM'den konuş, aynı Agent'ı paylaş. Admin herkesi yönetir.</p>
+          <p className="text-xs text-zinc-500 mt-1">Arkadaşlar → ekle/onayla, DM'den foto/video/ses gönder, Drive'a yüklenir. Varsayılan hesaplar zaten arkadaş.</p>
         </div>
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-          <p className="text-sm font-medium">Beleş öncelik</p>
-          <p className="text-xs text-zinc-500 mt-1">Kod→Groq 120B, görsel→FLUX, genel→Groq 20B/Gemini. Kota bitince yedeğe geçer.</p>
+          <p className="text-sm font-medium">Kod Editör</p>
+          <p className="text-xs text-zinc-500 mt-1">Üstten Editör'e gir — AI orada kod yazar, test eder, GitHub'a pushlar.</p>
         </div>
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
           <p className="text-sm font-medium">Yedek</p>
-          <p className="text-xs text-zinc-500 mt-1">Sohbetler Supabase'te kalıcı, üstteki butonla JSON indir → Drive'a yükle.</p>
+          <p className="text-xs text-zinc-500 mt-1">Sohbetler Supabase'te kalıcı, sebzepsiz silinmez. Haftalık temizlik sadece 1 haftadır kullanılmayanları atar (admin hariç).</p>
         </div>
       </div>
-    </div>
+        </div>
+      </div>
+    </>
   )
 }

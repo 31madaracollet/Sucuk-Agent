@@ -112,6 +112,8 @@ const toDbDM = (m: DirectMessage) => ({
   sender_id: m.senderId,
   receiver_id: m.receiverId,
   content: m.content,
+  media_url: (m as any).mediaUrl ?? (m as any).media_url ?? null,
+  media_type: (m as any).mediaType ?? (m as any).media_type ?? null,
   read: m.read,
   created_at: m.createdAt,
 })
@@ -120,6 +122,8 @@ const fromDbDM = (r: any): DirectMessage => ({
   senderId: r.sender_id,
   receiverId: r.receiver_id,
   content: r.content,
+  mediaUrl: r.media_url ?? r.mediaUrl,
+  mediaType: r.media_type ?? r.mediaType,
   read: r.read,
   createdAt: r.created_at,
 })
@@ -209,6 +213,22 @@ export async function ensureDemoProfiles() {
   if (!user) {
     await createProfile("demo-user-001", "Pirensine", "user")
   }
+  // 2. Arkadaşlık — varsayılan hesaplar birbirine arkadaş
+  try {
+    const a = await getProfileByUsername("Sucuk9977")
+    const u = await getProfileByUsername("Pirensine")
+    if (a && u) {
+      const existing = await listFriendships(a.id)
+      const already = existing.some(f => (f.userId===a.id && f.friendId===u.id) || (f.userId===u.id && f.friendId===a.id))
+      if (!already) {
+        await addFriendship(a.id, u.id)
+        // otomatik kabul et
+        const fr = await listFriendships(a.id)
+        const pending = fr.find(f=>f.friendId===u.id && f.status==="pending")
+        if (pending) await acceptFriendship(pending.id)
+      }
+    }
+  } catch {}
 }
 
 export function seedDemoAccounts() {
@@ -729,4 +749,33 @@ export async function inviteToProject(projectId: string, userId: string, inviter
     await createNotification(userId, "project_invite", "Projeye davet", `${inviterId} seni "${proj?.name}" projesine davet etti`, inviterId)
   }
   return m
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bellek Temizliği (1 hafta kullanılmayan sohbetler silinir, admin hariç) */
+/* ------------------------------------------------------------------ */
+export async function cleanupOldChats(): Promise<{ deleted: number, skippedAdmin: number }> {
+  const oneWeekAgo = new Date(Date.now() - 7*24*60*60*1000).toISOString()
+  let deleted = 0, skippedAdmin = 0
+  if (isSupabaseConfigured && supabaseAdmin) {
+    const { data: chats } = await supabaseAdmin.from("chats").select("id, user_id, updated_at")
+    for(const c of (chats ?? [])){
+      if(c.updated_at < oneWeekAgo){
+        const { data: profile } = await supabaseAdmin.from("profiles").select("role").eq("id", c.user_id).single()
+        if((profile as any)?.role === "admin"){ skippedAdmin++; continue }
+        await supabaseAdmin.from("messages").delete().eq("chat_id", c.id)
+        await supabaseAdmin.from("chats").delete().eq("id", c.id)
+        deleted++
+      }
+    }
+  } else {
+    for(const [id, chat] of Array.from(demo.chats.entries())){
+      if(chat.updatedAt < oneWeekAgo){
+        const p = demo.profiles.get(chat.userId)
+        if(p?.role === "admin"){ skippedAdmin++; continue }
+        demo.chats.delete(id); demo.messages.delete(id); deleted++
+      }
+    }
+  }
+  return { deleted, skippedAdmin }
 }

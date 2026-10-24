@@ -46,8 +46,8 @@ const PROVIDER_ENV_KEYS: Record<ProviderId, string[]> = {
   openrouter: ["OPENROUTER_API_KEY_1", "OPENROUTER_API_KEY_2", "OPENROUTER_API_KEY_3"],
   deepseek: ["DEEPSEEK_API_KEY_1", "DEEPSEEK_API_KEY_2", "DEEPSEEK_API_KEY_3"],
   kimi: ["KIMI_API_KEY_1", "KIMI_API_KEY_2", "KIMI_API_KEY_3"],
-  nvidia: ["NVIDIA_API_KEY_1", "NVIDIA_API_KEY_2", "NVIDIA_API_KEY_3"],
-  huggingface: ["HUGGINGFACE_API_TOKEN", "", ""],
+  nvidia: ["NVIDIA_API_KEY_1", "NVIDIA_API_KEY_2", "NVIDIA_API_KEY_3", "NVIDIA_API_KEY_4", "NVIDIA_API_KEY_5"],
+  huggingface: ["HUGGINGFACE_API_TOKEN", "HUGGINGFACE_API_TOKEN_2", "HUGGINGFACE_API_TOKEN_3", "HUGGINGFACE_API_TOKEN_4", "HUGGINGFACE_API_TOKEN_5"],
 };
 
 /*  Model eşlemeleri (sağlayıcı -> model -> endpoint) — tüm beleş/ücretli modeller burada  */
