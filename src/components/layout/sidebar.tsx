@@ -30,6 +30,12 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
     loadUser()
     loadChats()
     loadFriends()
+    // sohbet silinince derived kalmasın — global event dinle
+    const onChatsChanged = () => loadChats()
+    window.addEventListener("sucuk:chatsChanged", onChatsChanged)
+    const onVis = () => { if(document.visibilityState==="visible") loadChats() }
+    document.addEventListener("visibilitychange", onVis)
+    return ()=>{ window.removeEventListener("sucuk:chatsChanged", onChatsChanged); document.removeEventListener("visibilitychange", onVis) }
   },[])
 
   async function loadChats(){

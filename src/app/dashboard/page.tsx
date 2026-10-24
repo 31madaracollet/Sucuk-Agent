@@ -45,9 +45,19 @@ export default function DashboardPage() {
   }
 
   async function deleteChat(id: string) {
-    if (!window.confirm("Sohbet silinsin mi?")) return
-    await fetch(`/api/chat/${id}`, { method: "DELETE", credentials: "include" })
-    setChats(chats.filter((c) => c.id !== id))
+    if (!window.confirm("Sohbet silinsin mi? Drive yedeğinden de silinecek.")) return
+    const r = await fetch(`/api/chat/${id}`, { method: "DELETE", credentials: "include" })
+    if(!r.ok){ alert("Silinemedi"); return }
+    // derived temizle — local + global event
+    setChats(prev => prev.filter((c) => c.id !== id))
+    // Sidebar ve diğer bileşenler için global yenile tetikle
+    try{ window.dispatchEvent(new CustomEvent("sucuk:chatsChanged",{detail:{deleted:id}})) }catch{}
+    // sunucudan teyit için yeniden çek (derin temizlik)
+    try{
+      const rc = await fetch("/api/chat",{credentials:"include"})
+      const j = await rc.json()
+      setChats(j.chats ?? [])
+    }catch{}
   }
 
   async function exportAll() {
