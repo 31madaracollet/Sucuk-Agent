@@ -32,7 +32,7 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
     return()=>{ window.removeEventListener("sucuk:chatsChanged",onChatsChanged); document.removeEventListener("visibilitychange",onVis)}
   },[])
 
-  async function loadChats(){ try{const r=await fetch("/api/chat",{credentials:"include"}); const j=await r.json(); setChats(j.chats??[])}catch{} }
+  async function loadChats(){ try{const r=await fetch("/api/chat",{credentials:"include"}); const j=await r.json(); const server=j.chats??[]; try{ const ls=localStorage.getItem("sucuk:chats"); const lsChats=ls?JSON.parse(ls):[]; const merged=[...server]; for(const lc of lsChats){ if(!merged.find((c:any)=>c.id===lc.id)) merged.push(lc)}; const final=merged.length?merged:lsChats; setChats(final); if(final.length) localStorage.setItem("sucuk:chats", JSON.stringify(final)); else if(server.length) localStorage.setItem("sucuk:chats", JSON.stringify(server)); else setChats(server)}catch{ setChats(server)} }catch{ try{ const ls=localStorage.getItem("sucuk:chats"); if(ls) setChats(JSON.parse(ls)) }catch{} } }
   async function loadFriends(){ try{const r=await fetch("/api/friends",{credentials:"include"}); const j=await r.json(); setFriends(j.friends?? j.friendships?? [])}catch{} }
 
   const [selectedFriend, setSelectedFriend] = useState<any>(null)
@@ -42,7 +42,7 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
   async function sendFriendMsg(){ if(!friendInput.trim()||!selectedFriend) return; const fid=selectedFriend.friend?.id || selectedFriend.friendId || selectedFriend.friend_id; await fetch("/api/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({receiverId:fid,content:friendInput}),credentials:"include"}); setFriendInput(""); loadFriendChat(fid, selectedFriend) }
 
   async function createNewChat(){
-    try{ const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:"Yeni Sohbet"}),credentials:"include"}); const data=await res.json(); if(!res.ok){alert(data.error||"Oluşturulamadı"); return} if(data.chat) router.push(`/chat/${data.chat.id}`); loadChats(); window.dispatchEvent(new CustomEvent("sucuk:chatsChanged")) }catch(e:any){alert("Hata: "+e.message)}
+    try{ const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:"Yeni Sohbet"}),credentials:"include"}); const data=await res.json(); if(!res.ok){alert(data.error||"Oluşturulamadı"); return} if(data.chat){ try{ const ls=localStorage.getItem("sucuk:chats"); const arr=ls?JSON.parse(ls):[]; arr.unshift(data.chat); localStorage.setItem("sucuk:chats", JSON.stringify(arr)); localStorage.setItem(`sucuk:chat:${data.chat.id}`, JSON.stringify(data.chat)); localStorage.setItem(`sucuk:msgs:${data.chat.id}`, JSON.stringify([])) }catch{}; router.push(`/chat/${data.chat.id}`) } loadChats(); window.dispatchEvent(new CustomEvent("sucuk:chatsChanged")) }catch(e:any){alert("Hata: "+e.message)}
   }
   async function saveProfile(){ if(!newUsername.trim()) return; const r=await fetch("/api/profile",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:newUsername}),credentials:"include"}); if(r.ok){alert("Profil güncellendi"); setShowProfile(false); location.reload()} else alert("Güncellenemedi") }
 
