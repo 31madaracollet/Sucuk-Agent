@@ -287,15 +287,29 @@ export async function ensureDemoProfiles() {
 export async function ensureDemoIntegrations(userId: string){
   try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const existing = await listTools()
-  const mine = existing.filter(t=> t.addedBy===userId || t.addedBy==="system-embedded")
-  if(mine.length>0) return
+  const mine = existing.filter(t=> t.addedBy===userId)
+  if(mine.length>=5) return // zaten kalıcı bağlı
+  // Workspace hepsi + GitHub repo bağlama (kullanıcıya özel kalıcı)
   const defaults = [
-    { provider:"supabase", name:"Supabase (Gömülü)", desc:"Kalıcı DB — varsayılan bağlı" },
-    { provider:"google_drive", name:"Google Drive (Gömülü)", desc:"Oto yedek — varsayılan" },
-    { provider:"github", name:"GitHub (Gömülü)", desc:"Repo — gömülü token" },
+    { provider:"supabase", name:"Supabase (Kalıcı)", desc:"Sohbet & proje — kullanıcıya özel kalıcı" },
+    { provider:"github", name:"GitHub Repo (Kalıcı)", desc:"Repo bağla — kalıcı, sorunsuz" },
+    { provider:"google_drive", name:"Google Drive (Kalıcı)", desc:"Drive yedek — kalıcı OAuth" },
+    { provider:"google_workspace", name:"Google Workspace (Docs/Sheets)", desc:"Docs/Slides/Sheets — kalıcı" },
+    { provider:"notion", name:"Notion", desc:"Notion DB — kalıcı" },
+    { provider:"maps", name:"Google Haritalar", desc:"Harita — kalıcı" },
+    { provider:"vercel", name:"Vercel", desc:"Deploy — kalıcı" },
+    { provider:"huggingface", name:"Hugging Face", desc:"Görsel FLUX — kalıcı" },
+    { provider:"nvidia", name:"NVIDIA", desc:"Nemotron — kalıcı" },
   ]
   for(const d of defaults){
-    await addTool(d.name, d.desc, { provider: d.provider, embedded:true, connectedAt: new Date().toISOString() }, "system-embedded")
+    const already = mine.find(m=> (m.config as any)?.provider===d.provider)
+    if(already) continue
+    await addTool(d.name, d.desc, { provider: d.provider, embedded:true, userId, persistent:true, connectedAt: new Date().toISOString() }, userId)
+  }
+  // sistem gömülü yedek (eski uyumluluk)
+  const sysMine = existing.filter(t=> t.addedBy==="system-embedded")
+  if(sysMine.length===0){
+    await addTool("Supabase (Gömülü)", "Kalıcı DB — varsayılan", { provider:"supabase", embedded:true, connectedAt: new Date().toISOString() }, "system-embedded")
   }
 }
 

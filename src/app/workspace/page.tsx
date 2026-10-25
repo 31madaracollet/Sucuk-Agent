@@ -32,9 +32,23 @@ export default function WorkspacePage() {
   }
   async function autoConnectGoogle(){
     setGoogleConnecting(true)
-    const providers=[{provider:"google_drive",name:`${userName} — Google Drive`},{provider:"google_workspace",name:`${userName} — Google Workspace`},{provider:"maps",name:`${userName} — Google Haritalar`},{provider:"github",name:`${userName} — GitHub`},{provider:"supabase",name:`${userName} — Supabase`}]
-    for(const pr of providers) try{ await fetch("/api/integrations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider:pr.provider,name:pr.name,config:{connectedAt:new Date().toISOString(),googleAuto:true,agentAccess:true}}),credentials:"include"})}catch{}
-    alert("Google hesabı bağlandı — Agent’lar otomatik erişiyor (sen zaten bağlısın, onlar da bağlandı)"); setGoogleConnecting(false); load()
+    // Görev 2: workspace hepsi + GitHub repo — tek tık kalıcı (kullanıcının hesabına bağlanır)
+    const providers=[
+      {provider:"google_drive",name:`${userName} — Google Drive (Kalıcı)`},
+      {provider:"google_workspace",name:`${userName} — Google Docs/Sheets (Kalıcı)`},
+      {provider:"maps",name:`${userName} — Google Haritalar`},
+      {provider:"github",name:`${userName} — GitHub Repo (Kalıcı)`},
+      {provider:"supabase",name:`${userName} — Supabase`},
+      {provider:"notion",name:`${userName} — Notion`},
+      {provider:"vercel",name:`${userName} — Vercel`},
+      {provider:"huggingface",name:`${userName} — Hugging Face`},
+      {provider:"nvidia",name:`${userName} — NVIDIA`},
+      {provider:"slack",name:`${userName} — Slack`},
+      {provider:"discord",name:`${userName} — Discord`},
+      {provider:"excel",name:`${userName} — Excel/Sheets`},
+    ]
+    for(const pr of providers) try{ await fetch("/api/integrations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider:pr.provider,name:pr.name,config:{connectedAt:new Date().toISOString(),googleAuto:true,agentAccess:true,persistent:true}}),credentials:"include"})}catch{}
+    alert("Workspace hepsi bağlandı — GitHub repo dahil, Google Drive/Docs kalıcı (bir daha sormaz)"); setGoogleConnecting(false); load()
   }
   async function doSearch(){ if(!searchQ.trim()) return; const r=await fetch(`/api/workspace?q=${encodeURIComponent(searchQ)}`,{credentials:"include"}); const j=await r.json(); setSearchResults(j.results??[]) }
   async function doBrowse(){ if(!browseUrl.trim()) return; const r=await fetch("/api/workspace",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:browseUrl}),credentials:"include"}); const j=await r.json(); setBrowseResult(j.browse??null) }

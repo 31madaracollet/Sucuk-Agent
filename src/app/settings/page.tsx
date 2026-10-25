@@ -8,14 +8,14 @@ import { INTEGRATIONS } from "@/lib/integrations"
 import { useTheme } from "@/components/theme-provider"
 
 const MODEL_TASKS: Record<string,string> = {
-  google: "Genel / Çeviri — Gemini 3.8 Flash (beleş)",
+  google: "Genel/Çeviri/Döküman — Gemini 3.8 Flash (Görev 1+2)",
   groq: "Kod & Arama — GPT-OSS 120B/20B",
   openrouter: "Kod — Claude Sonnet 5.5",
-  huggingface: "Görsel — FLUX.1/SDXL + Prompt Guard",
-  deepseek: "Akıl — Reasoner",
+  huggingface: "Görsel — FLUX.1-schnell + Qwen-Image (her prompt İngilizceye çevrilir) + No logo",
+  deepseek: "Ağır mantık — Reasoner (Görev 3)",
   kimi: "Kod uzun bağlam — Moonshot",
-  nvidia: "Akıl — Nemotron (5 anahtar)",
-  openai: "Genel — GPT-4o",
+  nvidia: "Ağır mantık yedeği — Nemotron 5 anahtar (Görev 3)",
+  openai: "Yazı/Döküman/Slayt — GPT-4o (Görev 2: Gemini/OpenAI)",
 }
 
 export default function SettingsPage(){

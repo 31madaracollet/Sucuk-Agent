@@ -109,27 +109,28 @@ export const MODEL_CATALOG: CatalogEntry[] = [
   { provider: "openai", model: "gpt-4o-mini", label: "GPT-4o mini", task: "genel", free: false, desc: "OpenAI dengeli" },
 
   // Kod
-  { provider: "groq", model: "openai/gpt-oss-120b", label: "GPT-OSS 120B (Groq) 🧠", task: "kod", free: true, desc: "Kod, debug, mimari — en güçlü beleş" },
+  { provider: "groq", model: "openai/gpt-oss-120b", label: "GPT-OSS 120B (Groq) 🧠", task: "kod", free: true, desc: "Kod, debug, mimari — ağır mantık yedeği" },
   { provider: "openrouter", model: "anthropic/claude-sonnet-5.5", label: "Claude Sonnet 5.5", task: "kod", free: false, desc: "Kod + uzun proje, en kaliteli" },
   { provider: "huggingface", model: "Qwen/Qwen2.5-Coder-7B-Instruct", label: "Qwen Coder 7B", task: "kod", free: true, desc: "Kod odaklı beleş" },
   { provider: "kimi", model: "moonshot-v1-32k", label: "Moonshot 32K", task: "kod", free: false, desc: "Uzun dosya/kod bağlamı" },
 
-  // Akıl / reasoning
-  { provider: "deepseek", model: "deepseek-reasoner", label: "DeepSeek Reasoner", task: "akıl", free: false, desc: "Adım adım akıl yürütme" },
-  { provider: "nvidia", model: "nvidia/llama-3.3-nemotron-super-49b-v1", label: "Nemotron Super 49B", task: "akıl", free: false, desc: "Derin analiz, mantık" },
-  { provider: "openai", model: "gpt-4o", label: "GPT-4o", task: "akıl", free: false, desc: "Karışık muhakeme" },
+  // Akıl / reasoning — ağır mantık deepseek + nvidia (Görev 3)
+  { provider: "deepseek", model: "deepseek-reasoner", label: "DeepSeek Reasoner 🧠", task: "akıl", free: false, desc: "Ağır mantık, adım adım — deepseek" },
+  { provider: "nvidia", model: "nvidia/llama-3.3-nemotron-super-49b-v1", label: "Nemotron Super 49B ⚡", task: "akıl", free: false, desc: "Ağır mantık yedeği — nvidia 5 anahtar" },
+  { provider: "openai", model: "gpt-4o", label: "GPT-4o", task: "akıl", free: false, desc: "Karışık muhakeme yedeği" },
 
-  // Görsel
-  { provider: "huggingface", model: "black-forest-labs/FLUX.1-schnell", label: "FLUX.1 Schnell (Görsel)", task: "gorsel", free: true, desc: "Metinden görsel — köpek çiz vs." },
-  { provider: "huggingface", model: "stabilityai/stable-diffusion-xl-base-1.0", label: "SDXL 1.0 (Görsel)", task: "gorsel", free: true, desc: "Poster, logo, tasarla" },
+    // Görsel — çeviri + FLUX (Görev 1: her prompt İngilizceye çevrilir)
+  { provider: "huggingface", model: "black-forest-labs/FLUX.1-schnell", label: "FLUX.1 Schnell ⚡ (Görsel)", task: "gorsel", free: true, desc: "Hızlı 1-4 adım, logosuz — her prompt İngilizceye çevrilir" },
+  { provider: "huggingface", model: "Qwen/Qwen-Image", label: "Qwen-Image (Görsel)", task: "gorsel", free: true, desc: "Photorealistic yedek — FLUX sonrası" },
 
   // Arama
   { provider: "groq", model: "openai/gpt-oss-120b", label: "Groq + Web Arama", task: "arama", free: true, desc: "Güncel haber, fiyat, web" },
   { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free", label: "Llama 3.3 70B (OR Free)", task: "arama", free: true, desc: "Beleş arama özetleme" },
 
-  // Çeviri / genel ek
-  { provider: "kimi", model: "moonshot-v1-8k", label: "Moonshot 8K", task: "çeviri", free: false, desc: "Çeviri, özet, kısa metin" },
-  { provider: "google", model: "gemini-3.8-flash-lite", label: "Gemini 3.8 Lite", task: "çeviri", free: true, desc: "Hızlı çeviri/özet" },
+  // Çeviri — Görev 1: her prompt çevirilir (resimde de aktif)
+  { provider: "google", model: "gemini-3.8-flash", label: "Gemini Çeviri 🌐", task: "çeviri", free: true, desc: "Her ne derse desin çevir — gömülü" },
+  { provider: "kimi", model: "moonshot-v1-8k", label: "Moonshot 8K", task: "çeviri", free: false, desc: "Çeviri yedeği" },
+  { provider: "google", model: "gemini-3.8-flash-lite", label: "Gemini 3.8 Lite", task: "çeviri", free: true, desc: "Hızlı çeviri/özet yedeği" },
   { provider: "deepseek", model: "deepseek-chat", label: "DeepSeek Chat", task: "genel", free: false, desc: "Genel, uzun bağlam" },
   { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct", label: "Nemotron 70B", task: "genel", free: false, desc: "Genel asistan alternatifi" },
 ];
@@ -187,7 +188,7 @@ export class ProviderManager {
     }
 
     // Görsel modelleri chat endpointi üzerinden denemeyelim — generateImage kullan
-    const imageOnly = ["black-forest-labs/FLUX.1-schnell", "stabilityai/stable-diffusion-xl-base-1.0"]
+    const imageOnly = ["black-forest-labs/FLUX.1-schnell", "stabilityai/stable-diffusion-xl-base-1.0", "Qwen/Qwen-Image", "black-forest-labs/FLUX.1-dev", "stabilityai/stable-diffusion-3.5-large-turbo"]
     if (imageOnly.includes(model)) {
       throw new Error(`gorsel_model:${provider}:${model} — görsel için /api/image kullan`)
     }

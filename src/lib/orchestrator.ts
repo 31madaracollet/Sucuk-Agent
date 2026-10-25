@@ -35,7 +35,6 @@ export function routeRequest(message: string): RouteDecision {
     "debug", "hata ayikla", "script", "proje", "kutuphane", "tailwind",
     "supabase", "vercel", "node", "npm", "component", "hook",
   ]
-  // Kod — Groq hariç, araştırma için Groq kalsın (kullanıcı isteği)
   if (hasAny(m, codeKeywords)) {
     const beleş: Array<{provider: ProviderId, model: string}> = [
       { provider: "deepseek", model: "deepseek-chat" },
@@ -55,18 +54,50 @@ export function routeRequest(message: string): RouteDecision {
     }
   }
 
-  // Akıl / reasoning
+  // Yazı / Döküman / Slayt hazırlama — Gemini + OpenAI (kullanıcı isteği)
+  const docKeywords = [
+    "dokuman", "döküman", "belge", "yazi", "yazı", "makale", "rapor", "odev", "ödev",
+    "slayt", "sunum", "presentation", "slide", "google docs", "docs", "word", "pdf hazirla",
+    "icerik yaz", "metin yaz", "blog", "kompozisyon", "ozet cikar", "duzenle"
+  ]
+  if (hasAny(m, docKeywords)) {
+    const docModels: Array<{provider: ProviderId, model: string}> = [
+      { provider: "google", model: "gemini-3.8-flash" },
+      { provider: "openai", model: "gpt-4o-mini" },
+      { provider: "openai", model: "gpt-4o" },
+      { provider: "google", model: "gemini-3.8-flash-lite" },
+    ]
+    let h=0; for(let i=0;i<m.length;i++) h=(h*31 + m.charCodeAt(i))>>>0
+    const pick = docModels[h % docModels.length]
+    return {
+      agent: "text",
+      provider: pick.provider,
+      model: pick.model,
+      reason: `Döküman/Slayt — ${pick.provider} / ${pick.model} (yazı+Google Docs/Slides, kalıcı bağlantı)`,
+    }
+  }
+
+  // Akıl / ağır mantık — DeepSeek + NVIDIA (kullanıcı isteği)
   const reasoningKeywords = [
     "dusunu", "dusun", "mantik", "hesapla", "problem", "coz", "analiz",
     "adim adim", "step by step", "neden", "nicin", "kanitla", "acikla",
-    "matematik", "fizik", "kimya", "muhtemel", "olasilik",
+    "matematik", "fizik", "kimya", "muhtemel", "olasilik", "agir mantik", "zor soru",
   ]
-  if (hasAny(m, reasoningKeywords) && m.length > 30) {
+  if (hasAny(m, reasoningKeywords) && m.length > 20) {
+    // DeepSeek ve NVIDIA dönüşümlü — ağır mantık
+    const heavy: Array<{provider: ProviderId, model: string}> = [
+      { provider: "deepseek", model: "deepseek-reasoner" },
+      { provider: "nvidia", model: "nvidia/llama-3.3-nemotron-super-49b-v1" },
+      { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct" },
+      { provider: "deepseek", model: "deepseek-chat" },
+    ]
+    let h=0; for(let i=0;i<m.length;i++) h=(h*31 + m.charCodeAt(i))>>>0
+    const pick = heavy[h % heavy.length]
     return {
       agent: "reasoning",
-      provider: "deepseek",
-      model: "deepseek-reasoner",
-      reason: "Derin akıl yürütme — DeepSeek Reasoner ile adım adım çözülüyor. Yedek: Nemotron 49B",
+      provider: pick.provider,
+      model: pick.model,
+      reason: `Ağır mantık — ${pick.provider} / ${pick.model} (deepseek & nvidia rotasyonu)`,
     }
   }
 
@@ -94,13 +125,13 @@ export function routeRequest(message: string): RouteDecision {
     }
   }
 
-  // Çeviri / özet
-  if (hasAny(m, ["cevir", "translate", "ozetle", "ozet", "kisa ozet"])) {
+  // Çeviri — her ne derse desin çevirsin (Görev 1)
+  if (hasAny(m, ["cevir", "translate", "tercume", "çevir", "ingilizceye", "turkceye", "ozetle", "ozet", "kisa ozet"])) {
     return {
       agent: "text",
       provider: "google",
       model: "gemini-3.8-flash",
-      reason: "Çeviri/özet — Gemini 3.8 Flash (hızlı, beleş) ile işleniyor",
+      reason: "Çeviri — Gemini 3.8 Flash (görev 1: her prompt İngilizceye çevrilir, resimde de aktif)",
     }
   }
 

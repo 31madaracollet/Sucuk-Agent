@@ -27,11 +27,12 @@ function friendlyHfError(status: number, body: string): string {
 import { sanitizeImagePrompt, getStockImageFallback } from "./prompt-guard"
 import { createProviderManager } from "./providers"
 
-// Türkçe → İngilizce çevir (sadece Türkçe ise, timeout 2s)
+// Çeviri AI → İngilizce (resim modeli hep İngilizce anlıyor, her prompt çevir)
 async function enhanceImagePrompt(raw: string): Promise<string> {
   let en = raw
-  const hasTurkish = /[çğıöşüÇĞİÖŞÜ]/.test(raw)
-  if (hasTurkish) {
+  // Görev 1: çeviri – her ne derse desin resim promptu İngilizceye çevir
+  const shouldTranslate = true
+  if (shouldTranslate) {
     try {
       const m = createProviderManager()
       const providers = m.availableProviders() as any[]
