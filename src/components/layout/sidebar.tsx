@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { MessageCircle, Users, Plus, ChevronLeft, ChevronRight, User, X, Sparkles, Search, FileCode, Layers } from "lucide-react"
+import { MessageCircle, Users, Plus, ChevronLeft, ChevronRight, User, X, Sparkles, Search, FileCode, Layers, Github, HardDrive, Check, ExternalLink, RefreshCw, Cloud, FileText, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -19,6 +19,18 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
   const router = useRouter()
   const isMobile = useIsMobile()
   const [mobileOpen, setMobileOpen] = useState(false)
+  // — GitHub / Drive per-user states (seninki gibi) —
+  const [repos, setRepos] = useState<any[]>([])
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null)
+  const [reposLoading, setReposLoading] = useState(false)
+  const [reposError, setReposError] = useState<string | null>(null)
+  const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
+  const [githubLogin, setGithubLogin] = useState<string>("")
+  const [driveFiles, setDriveFiles] = useState<any[]>([])
+  const [driveLoading, setDriveLoading] = useState(false)
+  const [driveOk, setDriveOk] = useState<boolean | null>(null)
+  const [driveNote, setDriveNote] = useState<string>("")
+  const [driveRealAccount, setDriveRealAccount] = useState<string>("")
 
   // per-user anahtarlar — karışmayı önle, silinen tamamen gider
   function chatsKey(uid:string){ return `sucuk:chats:${uid}` }
@@ -32,14 +44,56 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
   }
 
   useEffect(()=>{
-    const init=async()=>{ const uid=await loadUserAndReturnId(); await loadChats(uid); await loadFriends() }
+    const init=async()=>{ const uid=await loadUserAndReturnId(); await loadChats(uid); await loadFriends(); if(uid){ loadRepos(); loadDrive(); loadSelectedRepo() } }
     init()
     const onChatsChanged=async()=>{ const uid=user?.id ?? await loadUserAndReturnId(); loadChats(uid) }
     window.addEventListener("sucuk:chatsChanged", onChatsChanged as any)
     const onVis=async()=>{ if(document.visibilityState==="visible"){ const uid=user?.id ?? await loadUserAndReturnId(); loadChats(uid) } }
     document.addEventListener("visibilitychange",onVis)
-    return()=>{ window.removeEventListener("sucuk:chatsChanged",onChatsChanged as any); document.removeEventListener("visibilitychange",onVis)}
+    // repo/drive refresh eventleri
+    const onRepoChanged=()=>{ loadRepos(); loadSelectedRepo() }
+    const onDriveChanged=()=> loadDrive()
+    window.addEventListener("sucuk:repoChanged", onRepoChanged as any)
+    window.addEventListener("sucuk:driveChanged", onDriveChanged as any)
+    return()=>{ window.removeEventListener("sucuk:chatsChanged",onChatsChanged as any); document.removeEventListener("visibilitychange",onVis); window.removeEventListener("sucuk:repoChanged", onRepoChanged as any); window.removeEventListener("sucuk:driveChanged", onDriveChanged as any)}
   },[])
+
+  // — Yandan repo seç (seninki gibi) + Drive seninki gibi bağlansın —
+  async function loadRepos(){
+    setReposLoading(true); setReposError(null)
+    try{
+      const r=await fetch("/api/github/repos",{credentials:"include"})
+      const j=await r.json()
+      if(j.connected===false){ setGithubConnected(false); setRepos([]); setReposError(j.note || "GitHub bağlı değil") }
+      else if(j.ok){ setGithubConnected(true); setRepos(j.repos||[]); setGithubLogin(j.context?.bindings?.[0]?.login || "") }
+      else { setGithubConnected(!!j.connected); setRepos(j.repos||[]); if(j.error) setReposError(j.error) }
+    }catch(e:any){ setReposError(e.message)}
+    finally{ setReposLoading(false)}
+  }
+  async function loadSelectedRepo(){
+    try{ const r=await fetch("/api/github/selected",{credentials:"include"}); const j=await r.json(); if(j.selected) setSelectedRepo(j.selected)}catch{}
+  }
+  async function selectRepo(fullName:string){
+    try{
+      const r=await fetch("/api/github/selected",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({repoFullName: fullName}),credentials:"include"})
+      const j=await r.json()
+      if(r.ok){ setSelectedRepo(fullName); window.dispatchEvent(new CustomEvent("sucuk:repoChanged")); window.dispatchEvent(new CustomEvent("sucuk:chatsChanged")) }
+      else alert(j.error||"Seçilemedi")
+    }catch(e:any){ alert(e.message)}
+  }
+  async function loadDrive(){
+    setDriveLoading(true)
+    try{
+      const r=await fetch("/api/drive/files",{credentials:"include"})
+      const j=await r.json()
+      setDriveOk(!!j.ok && (j.files?.length>0 || j.source?.includes("drive")))
+      setDriveFiles(j.files||[])
+      setDriveNote(j.note||"")
+      setDriveRealAccount(j.realAccount||"")
+      if(j.ok===false && !j.files?.length) setDriveOk(false)
+    }catch(e:any){ setDriveNote(e.message); setDriveOk(false) }
+    finally{ setDriveLoading(false) }
+  }
 
   async function loadChats(passedUid?:string|null){
     let uid = passedUid ?? user?.id ?? null
@@ -49,23 +103,17 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
     try{
       const r=await fetch("/api/chat",{credentials:"include"}); const j=await r.json(); const server=j.chats??[]
       if(!uid){
-        // giriş yoksa sadece server (boş) göster, local karıştırmayı engelle
         setChats(server)
         return
       }
       const perKey=chatsKey(uid)
       const dKey=deletedKey(uid)
-      // eski global anahtarları temizle — karışma kaynağı
       try{
         localStorage.removeItem("sucuk:chats")
-        // eski per-chat genericleri sil (sucuk:chat:xxx ve sucuk:msgs:xxx)
         for(let i=localStorage.length-1;i>=0;i--){
           const k=localStorage.key(i); if(!k) continue
           if((k.startsWith("sucuk:chat:") && !k.startsWith(`sucuk:chat:${uid}:`)) || (k.startsWith("sucuk:msgs:") && !k.startsWith(`sucuk:msgs:${uid}:`))){
-            // per-user olmayan eski anahtarları sil
-            // ama diğer kullanıcıların per-user anahtarlarına dokunma (sucuk:chats:<otherId> ve sucuk:chat:<otherId>:)
             if(k==="sucuk:chat:" ) continue
-            // sadece generic tek seviyelileri sil: sucuk:chat:<id> (iki nokta yok)
             const parts=k.split(":")
             if(k.startsWith("sucuk:chat:") && parts.length===3) localStorage.removeItem(k)
             if(k.startsWith("sucuk:msgs:") && parts.length===3) localStorage.removeItem(k)
@@ -80,7 +128,6 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
       }catch{ lsChats=[] }
       const merged=[...server]
       for(const lc of lsChats){ if(!merged.find((c:any)=>c.id===lc.id)) merged.push(lc) }
-      // silinenleri merged'den de at (tombstone)
       try{
         const delRaw2=localStorage.getItem(dKey); const deletedIds2=delRaw2?JSON.parse(delRaw2):[]
         const finalMerged=merged.filter((c:any)=> !deletedIds2.includes(c.id))
@@ -120,7 +167,6 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
           if(!uid){ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) uid=j.user.id }
           if(uid){
             const perKey=chatsKey(uid); const ls=localStorage.getItem(perKey); const arr=ls?JSON.parse(ls):[]; arr.unshift(data.chat); localStorage.setItem(perKey, JSON.stringify(arr)); localStorage.setItem(chatKey(uid,data.chat.id), JSON.stringify(data.chat)); localStorage.setItem(msgsKey(uid,data.chat.id), JSON.stringify([]))
-            // silme tombstone'dan çıkar (yeniden oluşturulursa)
             try{ const dKey=deletedKey(uid); const raw=localStorage.getItem(dKey); if(raw){ let del=JSON.parse(raw); del=del.filter((x:string)=>x!==data.chat.id); localStorage.setItem(dKey, JSON.stringify(del)) } }catch{}
           }
         }catch{}
@@ -163,15 +209,15 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
                   </div>
                 </div>
                 <div>
-                  <p className="text-[10px] tracking-[0.12em] text-[var(--muted)] font-medium">ARKADAŞLAR</p>
-                  <div className="mt-2 space-y-1">
-                    {friends.slice(0,8).map((f:any)=>(
-                      <div key={f.id} className="flex items-center gap-2 rounded-[10px] bg-[var(--surface)] border border-[var(--hairline-soft)] px-3 py-2.5">
-                        <span className="h-7 w-7 rounded-full bg-[var(--ink)] text-[var(--canvas)] grid place-items-center text-xs font-bold">{(f.friend?.username ?? f.otherUsername ?? "?")?.[0]?.toUpperCase()}</span>
-                        <span className="text-sm truncate flex-1">{f.friend?.username ?? f.otherUsername ?? f.friend_id}</span>
-                        {f.status==="pending" && <span className="text-[10px] text-yellow-600">bekliyor</span>}
-                      </div>
-                    ))}
+                  <p className="text-[10px] tracking-[0.12em] text-[var(--muted)] font-medium">REPOLAR — yandan seç</p>
+                  <div className="mt-2 rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-2">
+                    {githubConnected===false ? <a href="/api/auth/github" className="block text-xs text-center rounded-[8px] bg-[#24292f] text-white py-2">GitHub Bağla</a> : selectedRepo ? <p className="text-xs truncate">✅ {selectedRepo}</p> : <p className="text-xs text-[var(--muted)]">Repolar yükleniyor…</p> }
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] tracking-[0.12em] text-[var(--muted)] font-medium">DRIVE — seninki gibi</p>
+                  <div className="mt-2 rounded-[10px] border border-[var(--hairline)] bg-[var(--surface)] p-2">
+                    {driveOk ? <p className="text-xs">✅ {driveRealAccount || "Bağlı"} — {driveFiles.length} dosya</p> : <a href="/api/auth/google?type=all" className="block text-xs text-center rounded-[8px] bg-[#4285F4] text-white py-2">Drive Bağla</a>}
                   </div>
                 </div>
               </div>
@@ -197,7 +243,6 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
 
   return (
     <div className="w-[280px] shrink-0 border-r border-[var(--hairline)] bg-[var(--canvas)] flex flex-col h-[calc(100vh-64px)] sticky top-[64px]">
-      {/* Yeni Sohbet — coral primary, Claude imzası */}
       <div className="p-4 border-b border-[var(--hairline)]">
         <button onClick={createNewChat} className="w-full btn-coral flex items-center justify-center gap-2">
           <Plus className="h-4 w-4"/> Yeni sohbet
@@ -222,9 +267,74 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
           </div>
         </section>
 
+        {/* — YANDAN REPO SEÇ (seninki gibi) — */}
+        <section className="rounded-[12px] border border-[var(--hairline)] bg-[var(--surface)] p-3">
+          <p className="text-[10px] tracking-[0.12em] font-semibold text-[var(--muted)] flex items-center gap-2"><Github className="h-3 w-3"/> REPOLAR — yandan seç</p>
+          {selectedRepo && <p className="mt-2 text-xs rounded-[8px] bg-[var(--ink)] text-[var(--canvas)] px-2.5 py-1.5 truncate">✅ Seçili: {selectedRepo}</p>}
+          {reposLoading ? (
+            <p className="text-xs text-[var(--muted)] mt-2 flex items-center gap-1"><RefreshCw className="h-3 w-3 animate-spin"/> Repolar yükleniyor…</p>
+          ) : githubConnected===false ? (
+            <div className="mt-2 space-y-2">
+              <p className="text-xs text-[var(--muted)]">GitHub henüz bu hesaba bağlı değil — seninki gibi bağla, per-user kalır.</p>
+              <a href="/api/auth/github" className="flex items-center justify-center gap-2 rounded-[8px] bg-[#24292f] text-white px-3 py-2 text-xs font-medium hover:bg-black"><Github className="h-3.5 w-3.5"/> GitHub Bağla (seninki gibi)</a>
+              {reposError && <p className="text-[11px] text-red-600 flex items-center gap-1"><AlertCircle className="h-3 w-3"/>{reposError}</p>}
+            </div>
+          ) : (
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-[var(--muted)]">{githubLogin ? `@${githubLogin}` : ""} • {repos.length} repo • sana özel</span>
+                <button onClick={loadRepos} className="p-1 rounded hover:bg-[var(--surface-cream)]"><RefreshCw className="h-3 w-3 text-[var(--muted)]"/></button>
+              </div>
+              <div className="max-h-[220px] overflow-y-auto space-y-1 pr-1">
+                {repos.slice(0,20).map((r:any)=>(
+                  <button key={r.id} onClick={()=>selectRepo(r.full_name)} className={`w-full text-left rounded-[8px] px-2.5 py-2 text-xs border transition ${selectedRepo===r.full_name ? "bg-[var(--ink)] text-[var(--canvas)] border-transparent" : "bg-[var(--canvas)] border-[var(--hairline-soft)] hover:border-[var(--hairline)] text-[var(--ink)]"}`}>
+                    <p className="font-medium truncate flex items-center gap-1">{r.full_name} {r.private && <span className="text-[10px] opacity-60">🔒</span>} {selectedRepo===r.full_name && <Check className="h-3 w-3 ml-auto"/>}</p>
+                    {r.description && <p className="text-[11px] opacity-70 truncate">{r.description}</p>}
+                    <p className="text-[10px] opacity-60">{r.language || ""} • {new Date(r.updated_at).toLocaleDateString("tr-TR")}</p>
+                  </button>
+                ))}
+                {repos.length===0 && !reposLoading && <p className="text-xs text-[var(--muted)]">Repo yok — GitHub’da oluştur veya yenile.</p>}
+              </div>
+              {selectedRepo && <button onClick={async()=>{ await fetch("/api/github/selected",{method:"DELETE",credentials:"include"}); setSelectedRepo(null)}} className="w-full text-xs text-[var(--muted)] hover:text-red-600 py-1">Seçimi kaldır</button>}
+              <Link href="/workspace" className="block text-xs text-center text-[var(--muted)] hover:text-[var(--ink)]">Workspace’de yönet →</Link>
+            </div>
+          )}
+        </section>
+
+        {/* — DRIVE seninki gibi bağlansın — */}
+        <section className="rounded-[12px] border border-[var(--hairline)] bg-[var(--surface)] p-3">
+          <p className="text-[10px] tracking-[0.12em] font-semibold text-[var(--muted)] flex items-center gap-2"><HardDrive className="h-3 w-3"/> DRIVE — seninki gibi</p>
+          {driveLoading ? (
+            <p className="text-xs text-[var(--muted)] mt-2 flex items-center gap-1"><RefreshCw className="h-3 w-3 animate-spin"/> Drive kontrol ediliyor…</p>
+          ) : driveOk ? (
+            <div className="mt-2 space-y-1.5">
+              <p className="text-xs rounded-[8px] bg-emerald-600 text-white px-2.5 py-1.5 flex items-center gap-1"><Check className="h-3 w-3"/> Bağlı: {driveRealAccount || "Drive"} — {user?.u} hesabına özel</p>
+              <div className="max-h-[180px] overflow-y-auto space-y-1">
+                {driveFiles.slice(0,8).map((f:any)=>(
+                  <a key={f.id} href={f.webViewLink} target="_blank" className="flex items-center gap-2 rounded-[8px] bg-[var(--canvas)] border border-[var(--hairline-soft)] px-2.5 py-1.5 hover:border-[var(--hairline)]">
+                    <FileText className="h-3 w-3 text-[var(--muted)] shrink-0"/>
+                    <span className="text-xs truncate flex-1">{f.name}</span>
+                    <ExternalLink className="h-3 w-3 text-[var(--muted)] shrink-0"/>
+                  </a>
+                ))}
+                {driveFiles.length===0 && <p className="text-xs text-[var(--muted)]">Dosya yok — Drive klasörün boş.</p>}
+              </div>
+              <a href="https://drive.google.com/drive/folders/1WJxce63LuN_LO4Z85x2DXluL0PSDGues" target="_blank" className="block text-xs text-center rounded-[8px] border border-[var(--hairline)] bg-[var(--canvas)] py-1.5 hover:bg-[var(--surface-cream)] flex items-center justify-center gap-1"><Cloud className="h-3 w-3"/> Klasörü aç</a>
+              <button onClick={loadDrive} className="w-full text-xs text-[var(--muted)] flex items-center justify-center gap-1 py-1 hover:text-[var(--ink)]"><RefreshCw className="h-3 w-3"/> Yenile</button>
+              <p className="text-[10px] text-[var(--muted)]">{driveNote}</p>
+            </div>
+          ) : (
+            <div className="mt-2 space-y-2">
+              <p className="text-xs text-[var(--muted)]">{driveNote || "Drive henüz bu hesaba bağlı değil — seninki gibi tek tıkla bağla, hep kalır."}</p>
+              <a href="/api/auth/google?type=all" className="flex items-center justify-center gap-2 rounded-[8px] bg-[#4285F4] text-white px-3 py-2 text-xs font-medium hover:bg-[#357ae8]"><HardDrive className="h-3.5 w-3.5"/> Drive Bağla (seninki gibi)</a>
+              <a href="/api/auth/google?type=drive" className="block text-xs text-center rounded-[8px] border border-[var(--hairline)] bg-[var(--canvas)] py-1.5 hover:bg-[var(--surface-cream)]">Sadece Drive</a>
+              <button onClick={loadDrive} className="w-full text-xs text-[var(--muted)] flex items-center justify-center gap-1 py-1"><RefreshCw className="h-3 w-3"/> Tekrar dene</button>
+            </div>
+          )}
+        </section>
+
         <section>
           <p className="text-[10px] tracking-[0.12em] font-semibold text-[var(--muted)] flex items-center gap-2"><Users className="h-3 w-3"/> REHBER</p>
-          {/* Ekle - kullanıcı adıyla */}
           <div className="mt-2 flex gap-1.5">
             <input value={addFriendName} onChange={e=>setAddFriendName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleAddFriend()} placeholder="Kullanıcı adı ekle..." className="flex-1 rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] px-2.5 py-1.5 text-xs placeholder:text-[var(--muted)] focus:outline-none focus:ring-2 focus:ring-[var(--coral)]/20 focus:border-[var(--coral)]"/>
             <button onClick={handleAddFriend} disabled={addFriendBusy} className="rounded-[8px] bg-[var(--ink)] text-[var(--canvas)] px-2.5 py-1.5 text-xs font-medium disabled:opacity-50 hover:bg-[var(--ink-soft)]">Ekle</button>
@@ -272,6 +382,7 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate text-[var(--ink)]">{user.u}</p>
               <p className="text-xs text-[var(--muted)]">{user.r}</p>
+              {selectedRepo && <p className="text-[10px] text-[var(--muted)] truncate">📦 {selectedRepo}</p>}
             </div>
             <button onClick={()=>setShowProfile(true)} className="p-2 rounded-full hover:bg-[var(--surface-cream)]"><User className="h-4 w-4 text-[var(--muted)]"/></button>
           </div>

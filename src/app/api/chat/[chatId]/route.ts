@@ -12,7 +12,7 @@ import { routeRequest } from "@/lib/orchestrator"
 import { webSearch } from "@/lib/search"
 import { generateImage } from "@/lib/image"
 import { getDriveContext, getStorageContext } from "@/lib/drive"
-import { getGithubToken, pushFileToRepo, parseRepoUrl } from "@/lib/github"
+import { getGithubToken, pushFileToRepo, parseRepoUrl, getSelectedRepo } from "@/lib/github"
 
 export const dynamic = "force-dynamic"
 
@@ -200,6 +200,13 @@ export async function POST(req: Request, { params }: { params: { chatId: string 
           } catch{}
           if (!codeContent) codeContent = `// Sucuk-Agent otomatik dosya — istek: ${content}\nexport default function hello(){ return "Merhaba ${check.user.username} — ${new Date().toISOString()}" }\n`
           let ownerRepo = parseRepoUrl(content)
+          if (!ownerRepo) {
+            // Yandan seçili repo varsa öncelikli kullan (seninki gibi)
+            try {
+              const selected = await getSelectedRepo(check.user.id)
+              if (selected) ownerRepo = parseRepoUrl(selected)
+            } catch {}
+          }
           if (!ownerRepo) {
             if (token) {
               try {

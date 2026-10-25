@@ -78,6 +78,15 @@ export async function pushFileToRepo(opts: {
   return j
 }
 
+export async function getSelectedRepo(userId: string): Promise<string | null> {
+  try {
+    const tools = await listTools()
+    const sel = tools.find(t => (t.config as any)?.provider === "github_selected" && t.addedBy === userId)
+    if (sel) return (sel.config as any)?.repoFullName || (sel.config as any)?.repo || null
+  } catch {}
+  return null
+}
+
 export function parseRepoUrl(input: string): {owner:string,repo:string}|null {
   const m1 = input.match(/github\.com\/([^\/\s]+)\/([^\/\s#?]+)/i)
   if (m1) return { owner: m1[1], repo: m1[2].replace(/\.git$/,"") }
