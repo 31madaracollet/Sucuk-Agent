@@ -50,18 +50,28 @@ export async function GET(req: Request) {
     })
     const ghUser: any = await userRes.json()
 
-    // token'ı entegrasyon olarak kaydet — gerçek bağlı
+    // ÖNCE eski aynı-provider bağını temizle — per-user tek bağlı kalsın (hep bu hesapta)
+    try {
+      const { listTools, removeTool } = await import("@/lib/storage")
+      const all = await listTools()
+      for (const t of all.filter(x=> x.addedBy===user.id && (x.config as any)?.provider==="github")) {
+        await removeTool(t.id)
+      }
+    } catch {}
+    // token'ı entegrasyon olarak kaydet — gerçek bağlı, per-user kalıcı
     const tool = await addTool(
       `GitHub — ${ghUser.login || user.username}`,
-      `Gerçek GitHub bağlantısı — @${ghUser.login} • repo erişimi`,
+      `Gerçek GitHub bağlantısı — @${ghUser.login} • repo erişimi — ${user.username} hesabına kalıcı`,
       {
         provider: "github",
         real: true,
         githubLogin: ghUser.login,
         githubId: ghUser.id,
-        accessToken, // dikkat: Vercel'de şifreli saklanmalı, demo için direkt
+        accessToken,
         connectedAt: new Date().toISOString(),
         scope: tokenJson.scope,
+        boundToSiteUser: user.id,
+        boundToUsername: user.username,
       },
       user.id
     )

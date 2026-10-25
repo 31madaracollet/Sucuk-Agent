@@ -1,16 +1,45 @@
 import { listTools } from "./storage"
+import { getEmbeddedGithubToken } from "./embedded"
 
 export async function getGithubToken(userId: string): Promise<string | null> {
-  // 1. Kullanıcı OAuth tokeni
+  // SIKı PER-USER: sadece o site hesabına bağlanan GitHub tokeni döner — başka kullanıcının tokenine ASLA dokunmaz
   try {
     const tools = await listTools()
-    const gh = tools.find(t => (t.config as any)?.provider === "github" && (t.addedBy === userId))
-    if (gh && (gh.config as any)?.accessToken) return (gh.config as any).accessToken
-    const anyGh = tools.find(t => (t.config as any)?.provider === "github" && (gh?.config as any)?.accessToken)
-    if (anyGh) return (anyGh.config as any).accessToken
-  } catch{}
-  // 2. Env fallback (Vercel GITHUB_TOKEN / GH_TOKEN)
+    // 1) Bu kullanıcıya ait gerçek OAuth tokeni (en güncel)
+    const mine = tools.filter(t => (t.config as any)?.provider === "github" && t.addedBy === userId && (t.config as any)?.accessToken)
+    if (mine.length) {
+      // en son bağlanan
+      const latest = [...mine].sort((a,b)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+      return (latest.config as any).accessToken
+    }
+    // 2) Bu kullanıcıya ait gömülü/dry placeholder değil — sadece gerçek token
+    // Başka kullanıcının tokenine fallback YOK — güvenlik gereği
+  } catch {}
+  // 2) Kod içine gömülü per-user fallback (hardcode) — DB silinse bile hep öyle kalır
+  const embedded = getEmbeddedGithubToken(userId)
+  if (embedded) return embedded
+  // 3) Env fallback — sadece admin Vercel env'i (ortak değil per-user değil ama güvenli)
   return process.env.GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_PAT || null
+}
+
+export async function getGithubContext(userId: string) {
+  try {
+    const tools = await listTools()
+    const mine = tools.filter(t => (t.config as any)?.provider === "github" && t.addedBy === userId)
+    return {
+      connected: mine.length > 0,
+      bindings: mine.map(t => ({
+        id: t.id,
+        name: t.name,
+        login: (t.config as any)?.githubLogin,
+        real: !!(t.config as any)?.real,
+        provider: (t.config as any)?.provider,
+        addedBy: t.addedBy,
+        createdAt: t.createdAt,
+      })),
+      note: mine.length ? `GitHub ${mine[0].name} — bu site hesabına (${userId}) kalıcı bağlı` : "GitHub henüz bu hesaba bağlı değil — /workspace → GitHub Gerçek Bağla",
+    }
+  } catch(e:any){ return { connected:false, bindings:[], note: e.message } }
 }
 
 export async function pushFileToRepo(opts: {
@@ -24,7 +53,6 @@ export async function pushFileToRepo(opts: {
 }) {
   const branch = opts.branch || "main"
   const url = `https://api.github.com/repos/${opts.owner}/${opts.repo}/contents/${encodeURIComponent(opts.path).replace(/%2F/g,"/")}`
-  // mevcut dosyayı kontrol et (sha için)
   let sha: string | undefined
   try {
     const get = await fetch(url + `?ref=${branch}`, {
@@ -51,7 +79,6 @@ export async function pushFileToRepo(opts: {
 }
 
 export function parseRepoUrl(input: string): {owner:string,repo:string}|null {
-  // https://github.com/owner/repo veya owner/repo
   const m1 = input.match(/github\.com\/([^\/\s]+)\/([^\/\s#?]+)/i)
   if (m1) return { owner: m1[1], repo: m1[2].replace(/\.git$/,"") }
   const m2 = input.match(/\b([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\b/)

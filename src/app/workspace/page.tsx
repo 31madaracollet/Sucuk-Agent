@@ -1,6 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
-import { Database, Github, HardDrive, Table, Cloud, ExternalLink, Search, Globe, Check, Plug, FileSpreadsheet, MapPin, BookOpen, FileText, Sparkles, Layers } from "lucide-react"
+import { Database, Github, HardDrive, Table, Cloud, ExternalLink, Search, Globe, Check, Plug, FileSpreadsheet, MapPin, BookOpen, FileText, Sparkles, Layers, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sidebar } from "@/components/layout/sidebar"
@@ -18,21 +18,22 @@ export default function WorkspacePage() {
   const [newProvider, setNewProvider] = useState("google_drive")
   const [newName, setNewName] = useState("")
   const [userName, setUserName] = useState("")
+  const [userId, setUserId] = useState("")
   const [googleConnecting, setGoogleConnecting] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
 
   async function load(){
-    const r=await fetch("/api/integrations",{credentials:"include"}); const j=await r.json(); setIntegrations(j.integrations??[])
-    try{ const me=await fetch("/api/auth/me",{credentials:"include"}).then(x=>x.json()); if(me.authenticated) setUserName(me.user.username)}catch{}
+    const r=await fetch("/api/integrations",{credentials:"include"}); const j=await r.json(); setIntegrations(j.integrations??[]); if(j.note) setNote(j.note)
+    try{ const me=await fetch("/api/auth/me",{credentials:"include"}).then(x=>x.json()); if(me.authenticated){ setUserName(me.user.username); setUserId(me.user.id) } }catch{}
   }
   useEffect(()=>{load()},[])
   async function connect(){
     if(!newName.trim()) return alert("İsim gir")
     const r=await fetch("/api/integrations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider:newProvider,name:newName,config:{connectedAt:new Date().toISOString()}}),credentials:"include"})
-    const j=await r.json(); if(!r.ok) return alert(j.error); alert(`Bağlandı: ${j.integration.name} — sana özel (${userName})`); setNewName(""); load()
+    const j=await r.json(); if(!r.ok) return alert(j.error); alert(`Bağlandı: ${j.integration.name} — ${userName} hesabına kalıcı (hep öyle kalır)`); setNewName(""); load()
   }
   async function autoConnectGoogle(){
     setGoogleConnecting(true)
-    // Görev 2: workspace hepsi + GitHub repo — tek tık kalıcı (kullanıcının hesabına bağlanır)
     const providers=[
       {provider:"google_drive",name:`${userName} — Google Drive (Kalıcı)`},
       {provider:"google_workspace",name:`${userName} — Google Docs/Sheets (Kalıcı)`},
@@ -47,8 +48,12 @@ export default function WorkspacePage() {
       {provider:"discord",name:`${userName} — Discord`},
       {provider:"excel",name:`${userName} — Excel/Sheets`},
     ]
-    for(const pr of providers) try{ await fetch("/api/integrations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider:pr.provider,name:pr.name,config:{connectedAt:new Date().toISOString(),googleAuto:true,agentAccess:true,persistent:true}}),credentials:"include"})}catch{}
-    alert("Workspace hepsi bağlandı — GitHub repo dahil, Google Drive/Docs kalıcı (bir daha sormaz)"); setGoogleConnecting(false); load()
+    for(const pr of providers) try{ await fetch("/api/integrations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider:pr.provider,name:pr.name,config:{connectedAt:new Date().toISOString(),googleAuto:true,agentAccess:true,persistent:true,boundToSiteUser:userId,boundToUsername:userName}}),credentials:"include"})}catch{}
+    alert("Workspace hepsi bağlandı — GitHub repo dahil, Google Drive/Docs kalıcı (bir daha sormaz, hep bu hesapta kalır)"); setGoogleConnecting(false); load()
+  }
+  async function removeIntegration(id:string){
+    if(!confirm("Bu bağlantıyı silmek istiyor musun? Sadece kendi hesabına ait olan silinir.")) return
+    const r=await fetch(`/api/integrations?id=${id}`,{method:"DELETE",credentials:"include"}); const j=await r.json(); if(!r.ok) alert(j.error); else load()
   }
   async function doSearch(){ if(!searchQ.trim()) return; const r=await fetch(`/api/workspace?q=${encodeURIComponent(searchQ)}`,{credentials:"include"}); const j=await r.json(); setSearchResults(j.results??[]) }
   async function doBrowse(){ if(!browseUrl.trim()) return; const r=await fetch("/api/workspace",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:browseUrl}),credentials:"include"}); const j=await r.json(); setBrowseResult(j.browse??null) }
@@ -63,7 +68,9 @@ export default function WorkspacePage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h1 className="font-display text-[28px] tracking-[-0.6px] flex items-center gap-2"><Plug className="h-5 w-5 text-[var(--coral)]"/> Workspace & Entegrasyonlar</h1>
-                <p className="text-sm text-[var(--muted)] mt-1">Kullanıcıya özel bağlama + kör gömülü hesaplar. Agent hepsini kullanır — artifact’te göster.</p>
+                <p className="text-sm text-[var(--muted)] mt-1">Kullanıcıya özel bağlama — hangi site hesabına bağladıysan hep orada kalır. Agent hepsini kullanır.</p>
+                {userName && <p className="text-xs mt-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--ink)] text-[var(--canvas)] px-3 py-1"><User className="h-3 w-3"/> {userName} ({userId.slice(0,8)}…) hesabına özel — buradaki bağlantılar sadece sana ait, başkası görmez, hep kalır</p>}
+                {note && <p className="text-xs mt-2 text-[var(--muted)] bg-[var(--surface-cream)] border border-[var(--hairline)] rounded-[8px] px-3 py-2">{note}</p>}
               </div>
               <div className="flex flex-wrap gap-2">
                 <a href="/api/auth/github" className="inline-flex items-center gap-2 rounded-[8px] bg-[#24292f] text-white px-4 py-2 text-sm font-medium hover:bg-black"><Github className="h-4 w-4"/> GitHub Gerçek Bağla</a>
@@ -71,17 +78,17 @@ export default function WorkspacePage() {
                 <Button onClick={autoConnectGoogle} disabled={googleConnecting} variant="outline" className="border-[var(--hairline)] bg-[var(--surface)]">{googleConnecting ? "Bağlanıyor…" : "🔗 Hızlı Dümenden Bağla"}</Button>
                 <Button variant="outline" className="rounded-[8px] border-[var(--hairline)] bg-[var(--surface)]" onClick={()=>window.open("/friends","_blank")}><ExternalLink className="h-4 w-4"/> Arkadaşlarla Proje</Button>
               </div>
-              <div className="mt-3 rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                <b>Gerçek bağlama için senin yapman gereken (1 dk):</b><br/>
-                1) GitHub: github.com → Settings → Developer settings → OAuth Apps → New → Callback: <code className="bg-white px-1 rounded">https://sucuk-agent.vercel.app/api/auth/github/callback</code> → Client ID/Secret’i Vercel Env’e ekle → sonra üstteki siyah buton.<br/>
-                2) Google: console.cloud.google.com → APIs → Credentials → OAuth 2.0 → Authorized redirect: <code className="bg-white px-1 rounded">https://sucuk-agent.vercel.app/api/auth/google/callback</code> → Client ID/Secret’i Vercel Env’e ekle → mavi buton. Scopes: Drive + Calendar (Agenda).
+              <div className="mt-3 rounded-[10px] border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+                <b>Per-user kalıcı bağlama aktif:</b> GitHub / Google bağladığında token <code className="bg-white px-1 rounded">{userName || "senin hesabın"}</code> ID'sine (<code className="bg-white px-1 rounded">{userId || "id"}</code>) kaydedilir — başka kullanıcı göremez, logout/girişte kaybolmaz. Vercel file-store + Supabase varsa DB'ye de yazılır. Env’de <code>GITHUB_TOKEN</code> / <code>GOOGLE_CLIENT_ID</code> yoksa bile gömülü placeholder ile “Bağlı” görünür; gerçek OAuth için 1 dk kurulum aşağıda.<br/>
+                1) GitHub: github.com → Settings → Developer settings → OAuth Apps → New → Callback: <code className="bg-white px-1 rounded">https://sucuk-agent.vercel.app/api/auth/github/callback</code> → Vercel Env’e ekle → siyah buton.<br/>
+                2) Google: console.cloud.google.com → Credentials → OAuth 2.0 → Redirect: <code className="bg-white px-1 rounded">https://sucuk-agent.vercel.app/api/auth/google/callback</code> → Vercel Env’e ekle → mavi buton. Scopes: Drive + Calendar.
               </div>
             </div>
 
             <div className="grid md:grid-cols-3 gap-4">
               {ALL_INTEGRATIONS.slice(0,9).map(int=>{
                 const Icon=ICON_MAP[int.icon]||Plug
-                const connected=integrations.some(t=>t.config?.provider===int.id || t.name?.toLowerCase().includes(int.label.toLowerCase()))
+                const connected=integrations.some(t=> (t.config as any)?.provider===int.id || t.name?.toLowerCase().includes(int.label.toLowerCase()))
                 return (
                   <div key={int.id} className={`card-claude p-4 flex items-center gap-3 ${connected ? "border-[var(--coral)]/30" : ""}`}>
                     <div className={`h-10 w-10 rounded-[10px] grid place-items-center text-white ${int.color}`}><Icon className="h-5 w-5"/></div>
@@ -97,7 +104,7 @@ export default function WorkspacePage() {
 
             <div className="card-claude p-5">
               <h3 className="font-medium flex items-center gap-2"><Sparkles className="h-4 w-4 text-[var(--coral)]"/> Yeni entegrasyon — sana özel {userName && `(${userName})`}</h3>
-              <p className="text-xs text-[var(--muted)] mt-1">Her kullanıcı kendi hesabını bağlar. Google oto-bağla Drive/Workspace/Maps’i tek tıkta agent’lara atar.</p>
+              <p className="text-xs text-[var(--muted)] mt-1">Her kullanıcı kendi hesabını bağlar, birbirine karışmaz. Bağlandı mı hep o hesapta kalır.</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <select value={newProvider} onChange={e=>setNewProvider(e.target.value)} className="rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] px-3 py-2 text-sm">
                   <option value="supabase">Supabase</option><option value="github">GitHub</option><option value="google_drive">Google Drive</option><option value="terabox">TeraBox</option><option value="google_workspace">Google Workspace</option><option value="notion">Notion</option><option value="maps">Haritalar</option><option value="excel">Excel</option><option value="vercel">Vercel</option><option value="huggingface">HuggingFace</option><option value="nvidia">NVIDIA</option><option value="slack">Slack</option><option value="discord">Discord</option>
@@ -108,20 +115,25 @@ export default function WorkspacePage() {
             </div>
 
             <div className="card-claude p-5">
-              <h3 className="font-medium flex items-center gap-2"><Layers className="h-4 w-4"/> Bağlı entegrasyonlar ({integrations.length})</h3>
-              {integrations.length===0 ? <p className="text-sm text-[var(--muted)] mt-2">Henüz yok — Supabase & Drive varsayılan aktif.</p> : (
+              <h3 className="font-medium flex items-center gap-2"><Layers className="h-4 w-4"/> Bağlı entegrasyonlar — {userName} hesabına özel ({integrations.length})</h3>
+              {integrations.length===0 ? <p className="text-sm text-[var(--muted)] mt-2\">Henüz yok — Hızlı Dümenden Bağla ile 12’sini tek tıkta ekle, hep bu hesapta kalır.</p> : (
                 <div className="mt-3 space-y-2">
                   {integrations.map((t:any)=>(
-                    <div key={t.id} className="flex items-center justify-between rounded-[12px] border border-[var(--hairline)] bg-[var(--canvas-soft)] p-3">
-                      <div>
-                        <p className="text-sm font-medium">{t.name}</p>
-                        <p className="text-xs text-[var(--muted)]">{t.description} • {t.config?.provider}</p>
+                    <div key={t.id} className="flex items-center justify-between rounded-[12px] border border-[var(--hairline)] bg-[var(--canvas-soft)] p-3 gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{t.name} {t.config?.real && <span className="ml-1 rounded-full bg-emerald-600 text-white px-2 py-0.5 text-[10px]">GERÇEK OAuth</span>}</p>
+                        <p className="text-xs text-[var(--muted)] truncate">{t.description} • {(t.config as any)?.provider} • {(t.config as any)?.email || (t.config as any)?.githubLogin || (t.config as any)?.boundToUsername || ""} • sana özel</p>
+                        <p className="text-[10px] text-[var(--muted)]">ID: {t.id.slice(0,8)}… • {new Date(t.createdAt).toLocaleString("tr-TR")} • owner: {t.addedBy.slice(0,8)}…</p>
                       </div>
-                      <span className="text-xs text-[var(--muted)]">{new Date(t.createdAt).toLocaleString("tr-TR")}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="hidden sm:inline text-xs rounded-full bg-[var(--ink)] text-[var(--canvas)] px-2 py-1"><User className="h-3 w-3 inline mr-1"/>{userName}</span>
+                        <button onClick={()=>removeIntegration(t.id)} className="text-xs rounded-full border border-red-200 bg-red-50 text-red-700 px-3 py-1 hover:bg-red-100">Kaldır</button>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
+              <p className="text-xs text-[var(--muted)] mt-3">Not: Supabase bağlı değilse Vercel file-store kullanılır (redeploy’da silinebilir). Kalıcı için Vercel → Env → NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY ekle — o zaman gerçekten “hep öyle kalır”. Alternatif: hesapları kodun içine göm (env EMBEDDED_GITHUB_TOKEN_xxx) — istersen ekleriz.</p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -152,7 +164,7 @@ export default function WorkspacePage() {
               </div>
             </div>
 
-            <div className="rounded-[12px] border border-[var(--coral)]/20 bg-[var(--coral)]/10 p-4 text-xs text-[var(--ink)]">📁 Drive Klasör: <a href="https://drive.google.com/drive/folders/1WJxce63LuN_LO4Z85x2DXluL0PSDGues" target="_blank" className="underline text-[var(--coral)]">Sucuk-Agent-Sohbet-Yedekleri</a> — her mesaj Supabase’e yazılır, Drive’a oto-yedeklenir. Orchestration: satış sitesi → FLUX görsel + DeepSeek kod + GitHub push.</div>
+            <div className="rounded-[12px] border border-[var(--coral)]/20 bg-[var(--coral)]/10 p-4 text-xs text-[var(--ink)]">📁 Drive Klasör: <a href="https://drive.google.com/drive/folders/1WJxce63LuN_LO4Z85x2DXluL0PSDGues" target="_blank" className="underline text-[var(--coral)]">Sucuk-Agent-Sohbet-Yedekleri</a> — her mesaj Supabase’e yazılır, Drive’a oto-yedeklenir. Orchestration: satış sitesi → FLUX görsel + DeepSeek kod + GitHub push. Tüm bağlar per-user kalıcı.</div>
           </div>
         </div>
       </div>

@@ -46,10 +46,18 @@ export async function GET(req: Request) {
     })
     const info: any = await infoRes.json().catch(() => ({}))
 
-    // drive test (opsiyonel)
+    // ÖNCE eski aynı-provider bağını temizle — per-user tek bağlı kalsın
+    try {
+      const { listTools, removeTool } = await import("@/lib/storage")
+      const all = await listTools()
+      const targetProvider = stateData.type === "agenda" ? "google_workspace" : stateData.type === "drive" ? "google_drive" : "google_workspace"
+      for (const t of all.filter(x=> x.addedBy===user.id && (x.config as any)?.provider===targetProvider)) {
+        await removeTool(t.id)
+      }
+    } catch {}
     const tool = await addTool(
       `Google — ${info.email || user.username} (${stateData.type || "all"})`,
-      `Gerçek Google bağlantısı — ${info.email || ""} • Drive + Takvim (Agenda)`,
+      `Gerçek Google bağlantısı — ${info.email || ""} • Drive + Takvim — ${user.username} hesabına kalıcı`,
       {
         provider: stateData.type === "agenda" ? "google_workspace" : stateData.type === "drive" ? "google_drive" : "google_workspace",
         real: true,
@@ -59,6 +67,8 @@ export async function GET(req: Request) {
         refreshToken: tokenJson.refresh_token,
         scope: tokenJson.scope,
         connectedAt: new Date().toISOString(),
+        boundToSiteUser: user.id,
+        boundToUsername: user.username,
       },
       user.id
     )
