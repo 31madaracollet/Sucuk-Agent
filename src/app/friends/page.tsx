@@ -40,7 +40,7 @@ export default function FriendsPage(){
   useEffect(()=>{ if(otherId) loadFriends()},[otherId])
   useEffect(()=>{ const p=new URLSearchParams(window.location.search); const dm=p.get("dm"); if(dm) setOtherId(dm)},[])
 
-  async function addFriend(){ if(!addId.trim()) return; await fetch("/api/friends",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({friendId:addId}),credentials:"include"}); setAddId(""); loadFriends(); loadNotifs() }
+  async function addFriend(){ if(!addId.trim()) return; const r=await fetch("/api/friends",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({friendId:addId.trim(), friendUsername:addId.trim()}),credentials:"include"}); const j=await r.json(); if(!r.ok) alert(j.error||"Eklenemedi"); else { setAddId(""); loadFriends(); loadNotifs(); } }
   async function sendMessage(){ if(!newMessage.trim()||!otherId) return; await fetch("/api/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({receiverId:otherId,content:newMessage}),credentials:"include"}); setNewMessage(""); loadFriends() }
   async function sendMedia(file:File){ if(!otherId) return; const fd=new FormData(); fd.append("file",file); fd.append("receiverId",otherId); fd.append("content",newMessage); const res=await fetch("/api/media/upload",{method:"POST",body:fd,credentials:"include"}); if(res.ok){ setNewMessage(""); loadFriends()} else alert("Medya gönderilemedi") }
 
@@ -115,7 +115,7 @@ export default function FriendsPage(){
                     <h3 className="font-medium flex items-center gap-2"><Bell className="h-4 w-4"/> Bekleyen</h3>
                     {pending.length===0 ? <p className="text-sm text-[var(--muted)] text-center py-6">Bekleyen yok.</p> : pending.map(f=>(
                       <div key={f.id} className="flex items-center justify-between rounded-[12px] border border-[var(--hairline)] bg-[var(--canvas-soft)] p-3 mt-3">
-                        <span className="text-sm">{f.friend?.username ?? f.friendId}</span>
+                        <span className="text-sm">{f.friend?.username ?? f.otherUsername ?? f.friendId ?? f.friend_id}</span>
                         <Button size="sm" className="btn-coral h-8" onClick={async()=>{await fetch("/api/friends",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:f.id}),credentials:"include"}); loadFriends(); loadNotifs()}}><Check className="h-3 w-3"/> Onayla</Button>
                       </div>
                     ))}
@@ -127,8 +127,8 @@ export default function FriendsPage(){
                     <h3 className="font-medium flex items-center gap-2"><Users className="h-4 w-4"/> Rehber</h3>
                     <div className="mt-3 space-y-2">
                       {accepted.length===0 ? <p className="text-sm text-[var(--muted)] text-center py-6">Yok — Sucuk9977 & Pirensine varsayılan arkadaş.</p> : accepted.map(f=>{
-                        const fid=f.friend?.id ?? f.friendId ?? f.friend_id
-                        const name=f.friend?.username ?? f.friendId ?? "?"
+                        const fid=f.friend?.id ?? f.otherId ?? f.friendId ?? f.friend_id
+                        const name=f.friend?.username ?? f.otherUsername ?? f.friendId ?? "?"
                         return (
                           <button key={f.id} onClick={()=>{setOtherId(fid); setOtherName(name)}} className={`w-full flex items-center justify-between rounded-[12px] border p-3 text-left ${otherId===fid ? "bg-[var(--ink)] text-[var(--canvas)] border-transparent" : "bg-[var(--surface)] border-[var(--hairline)] hover:bg-[var(--surface-cream)]"}`}>
                             <span className="flex items-center gap-2 text-sm"><span className={`h-7 w-7 rounded-full grid place-items-center text-xs font-bold ${otherId===fid ? "bg-white text-black" : "bg-[var(--ink)] text-[var(--canvas)]"}`}>{name[0]?.toUpperCase()}</span>{name}</span>
