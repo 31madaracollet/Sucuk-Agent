@@ -13,6 +13,16 @@ export default function DashboardPage() {
   const [newTitle, setNewTitle] = useState("")
   const [q, setQ] = useState("")
 
+  function chatsKey(uid:string){ return `sucuk:chats:${uid}` }
+  function chatKey(uid:string,cid:string){ return `sucuk:chat:${uid}:${cid}` }
+  function msgsKey(uid:string,cid:string){ return `sucuk:msgs:${uid}:${cid}` }
+  function deletedKey(uid:string){ return `sucuk:deleted:${uid}` }
+
+  async function getUid():Promise<string|null>{
+    try{ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) return j.user.id }catch{}
+    return null
+  }
+
   async function load(){
     try{
       const [cRes, aRes]=await Promise.all([
@@ -21,23 +31,43 @@ export default function DashboardPage() {
       ])
       const cData=await cRes.json().catch(()=>({chats:[]})); const aData=await aRes.json().catch(()=>({announcements:[]}))
       const serverChats=cData.chats??[]
-      // localStorage fallback — Vercel serverless demo RAM kayıp olursa
+      const uid=await getUid()
+      if(!uid){
+        setChats(serverChats); setAnnouncements(aData.announcements??[]); setLoading(false); return
+      }
+      // eski global temizliği
       try{
-        const ls=localStorage.getItem("sucuk:chats")
-        const lsChats=ls?JSON.parse(ls):[]
+        localStorage.removeItem("sucuk:chats")
+        for(let i=localStorage.length-1;i>=0;i--){
+          const k=localStorage.key(i); if(!k) continue
+          const parts=k.split(":")
+          if(k.startsWith("sucuk:chat:") && parts.length===3) localStorage.removeItem(k)
+          if(k.startsWith("sucuk:msgs:") && parts.length===3) localStorage.removeItem(k)
+        }
+      }catch{}
+      try{
+        const perKey=chatsKey(uid); const dKey=deletedKey(uid)
+        const raw=localStorage.getItem(perKey); let lsChats=raw?JSON.parse(raw):[]
+        const delRaw=localStorage.getItem(dKey); const deletedIds=delRaw?JSON.parse(delRaw):[]
+        lsChats=lsChats.filter((c:any)=> !deletedIds.includes(c.id))
         const merged=[...serverChats]
         for(const lc of lsChats){ if(!merged.find((c:any)=>c.id===lc.id)) merged.push(lc) }
-        // server boşsa ls kullan
-        const final=merged.length?merged:lsChats
-        setChats(final); 
-        if(final.length) localStorage.setItem("sucuk:chats", JSON.stringify(final))
-        else if(serverChats.length) localStorage.setItem("sucuk:chats", JSON.stringify(serverChats))
+        const finalMerged=merged.filter((c:any)=> !deletedIds.includes(c.id))
+        const final=finalMerged.length?finalMerged:serverChats
+        setChats(final)
+        try{
+          localStorage.setItem(perKey, JSON.stringify(final))
+          for(const c of final){ try{ localStorage.setItem(chatKey(uid,c.id), JSON.stringify(c)) }catch{} }
+        }catch{}
       }catch{ setChats(serverChats) }
       setAnnouncements(aData.announcements??[]); setLoading(false)
     }catch{
       try{
-        const ls=localStorage.getItem("sucuk:chats")
-        if(ls) setChats(JSON.parse(ls))
+        const uid=await getUid()
+        if(uid){
+          const ls=localStorage.getItem(chatsKey(uid))
+          if(ls) setChats(JSON.parse(ls))
+        }
       }catch{}
       setLoading(false)
     }
@@ -48,7 +78,17 @@ export default function DashboardPage() {
       const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:newTitle||"Yeni Sohbet"}),credentials:"include"})
       const data=await res.json()
       if(!res.ok){ alert(data.error||"Oluşturulamadı"); return }
-      const newChats=[data.chat,...chats]; setChats(newChats); try{ localStorage.setItem("sucuk:chats", JSON.stringify(newChats)); localStorage.setItem(`sucuk:chat:${data.chat.id}`, JSON.stringify(data.chat)); localStorage.setItem(`sucuk:msgs:${data.chat.id}`, JSON.stringify([])) }catch{}
+      const uid=await getUid()
+      const newChats=[data.chat,...chats]; setChats(newChats)
+      try{
+        if(uid){
+          localStorage.setItem(chatsKey(uid), JSON.stringify(newChats))
+          localStorage.setItem(chatKey(uid,data.chat.id), JSON.stringify(data.chat))
+          localStorage.setItem(msgsKey(uid,data.chat.id), JSON.stringify([]))
+          // tombstone'dan çıkar
+          try{ const dKey=deletedKey(uid); const raw=localStorage.getItem(dKey); if(raw){ let del=JSON.parse(raw); del=del.filter((x:string)=>x!==data.chat.id); localStorage.setItem(dKey, JSON.stringify(del)) } }catch{}
+        }
+      }catch{}
       setNewTitle("")
       window.dispatchEvent(new CustomEvent("sucuk:chatsChanged"))
       window.location.href=`/chat/${data.chat.id}`
@@ -56,12 +96,35 @@ export default function DashboardPage() {
   }
 
   async function deleteChat(id:string){
-    if(!confirm("Sohbet silinsin mi? Drive yedeğinden de silinecek.")) return
+    if(!confirm("Sohbet silinsin mi? Drive yedeğinden de silinecek — tamamen silinecek.")) return
     const r=await fetch(`/api/chat/${id}`,{method:"DELETE",credentials:"include"})
     if(!r.ok){ alert("Silinemedi"); return }
-    const remaining=chats.filter(c=>c.id!==id); setChats(remaining); try{ localStorage.setItem("sucuk:chats", JSON.stringify(remaining)); localStorage.removeItem(`sucuk:chat:${id}`); localStorage.removeItem(`sucuk:msgs:${id}`) }catch{}
+    const remaining=chats.filter(c=>c.id!==id); setChats(remaining)
+    try{
+      const uid=await getUid()
+      if(uid){
+        localStorage.setItem(chatsKey(uid), JSON.stringify(remaining))
+        localStorage.removeItem(chatKey(uid,id))
+        localStorage.removeItem(msgsKey(uid,id))
+        // tombstone ekle — bir daha geri gelmesin
+        const dKey=deletedKey(uid); const raw=localStorage.getItem(dKey); let del=raw?JSON.parse(raw):[]; if(!del.includes(id)) del.push(id); localStorage.setItem(dKey, JSON.stringify(del))
+        // eski genericleri de sil
+        localStorage.removeItem(`sucuk:chat:${id}`)
+        localStorage.removeItem(`sucuk:msgs:${id}`)
+        localStorage.removeItem("sucuk:chats")
+      }
+    }catch{}
     window.dispatchEvent(new CustomEvent("sucuk:chatsChanged",{detail:{deleted:id}}))
-    try{ const rc=await fetch("/api/chat",{credentials:"include"}); const j=await rc.json(); if(j.chats) { setChats(j.chats??[]); try{ localStorage.setItem("sucuk:chats", JSON.stringify(j.chats??[])) }catch{} } }catch{}
+    try{
+      const rc=await fetch("/api/chat",{credentials:"include"}); const j=await rc.json()
+      if(j.chats) {
+        setChats(j.chats??[])
+        try{
+          const uid2=await getUid()
+          if(uid2) localStorage.setItem(chatsKey(uid2), JSON.stringify(j.chats??[]))
+        }catch{}
+      }
+    }catch{}
   }
 
   async function exportAll(){

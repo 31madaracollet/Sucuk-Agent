@@ -20,19 +20,85 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
   const isMobile = useIsMobile()
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  // per-user anahtarlar — karışmayı önle, silinen tamamen gider
+  function chatsKey(uid:string){ return `sucuk:chats:${uid}` }
+  function chatKey(uid:string, cid:string){ return `sucuk:chat:${uid}:${cid}` }
+  function msgsKey(uid:string, cid:string){ return `sucuk:msgs:${uid}:${cid}` }
+  function deletedKey(uid:string){ return `sucuk:deleted:${uid}` }
+
+  async function loadUserAndReturnId(): Promise<string|null>{
+    try{ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated){ setUser({u:j.user.username,r:j.user.role,id:j.user.id}); setNewUsername(j.user.username); return j.user.id } }catch{}
+    return null
+  }
+
   useEffect(()=>{
-    const loadUser = async () => {
-      try { const r = await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) {setUser({u:j.user.username,r:j.user.role,id:j.user.id}); setNewUsername(j.user.username)} } catch{}
-    }
-    loadUser(); loadChats(); loadFriends()
-    const onChatsChanged=()=>loadChats()
-    window.addEventListener("sucuk:chatsChanged", onChatsChanged)
-    const onVis=()=>{ if(document.visibilityState==="visible") loadChats() }
+    const init=async()=>{ const uid=await loadUserAndReturnId(); await loadChats(uid); await loadFriends() }
+    init()
+    const onChatsChanged=async()=>{ const uid=user?.id ?? await loadUserAndReturnId(); loadChats(uid) }
+    window.addEventListener("sucuk:chatsChanged", onChatsChanged as any)
+    const onVis=async()=>{ if(document.visibilityState==="visible"){ const uid=user?.id ?? await loadUserAndReturnId(); loadChats(uid) } }
     document.addEventListener("visibilitychange",onVis)
-    return()=>{ window.removeEventListener("sucuk:chatsChanged",onChatsChanged); document.removeEventListener("visibilitychange",onVis)}
+    return()=>{ window.removeEventListener("sucuk:chatsChanged",onChatsChanged as any); document.removeEventListener("visibilitychange",onVis)}
   },[])
 
-  async function loadChats(){ try{const r=await fetch("/api/chat",{credentials:"include"}); const j=await r.json(); const server=j.chats??[]; try{ const ls=localStorage.getItem("sucuk:chats"); const lsChats=ls?JSON.parse(ls):[]; const merged=[...server]; for(const lc of lsChats){ if(!merged.find((c:any)=>c.id===lc.id)) merged.push(lc)}; const final=merged.length?merged:lsChats; setChats(final); if(final.length) localStorage.setItem("sucuk:chats", JSON.stringify(final)); else if(server.length) localStorage.setItem("sucuk:chats", JSON.stringify(server)); else setChats(server)}catch{ setChats(server)} }catch{ try{ const ls=localStorage.getItem("sucuk:chats"); if(ls) setChats(JSON.parse(ls)) }catch{} } }
+  async function loadChats(passedUid?:string|null){
+    let uid = passedUid ?? user?.id ?? null
+    if(!uid){
+      try{ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) uid=j.user.id }catch{}
+    }
+    try{
+      const r=await fetch("/api/chat",{credentials:"include"}); const j=await r.json(); const server=j.chats??[]
+      if(!uid){
+        // giriş yoksa sadece server (boş) göster, local karıştırmayı engelle
+        setChats(server)
+        return
+      }
+      const perKey=chatsKey(uid)
+      const dKey=deletedKey(uid)
+      // eski global anahtarları temizle — karışma kaynağı
+      try{
+        localStorage.removeItem("sucuk:chats")
+        // eski per-chat genericleri sil (sucuk:chat:xxx ve sucuk:msgs:xxx)
+        for(let i=localStorage.length-1;i>=0;i--){
+          const k=localStorage.key(i); if(!k) continue
+          if((k.startsWith("sucuk:chat:") && !k.startsWith(`sucuk:chat:${uid}:`)) || (k.startsWith("sucuk:msgs:") && !k.startsWith(`sucuk:msgs:${uid}:`))){
+            // per-user olmayan eski anahtarları sil
+            // ama diğer kullanıcıların per-user anahtarlarına dokunma (sucuk:chats:<otherId> ve sucuk:chat:<otherId>:)
+            if(k==="sucuk:chat:" ) continue
+            // sadece generic tek seviyelileri sil: sucuk:chat:<id> (iki nokta yok)
+            const parts=k.split(":")
+            if(k.startsWith("sucuk:chat:") && parts.length===3) localStorage.removeItem(k)
+            if(k.startsWith("sucuk:msgs:") && parts.length===3) localStorage.removeItem(k)
+          }
+        }
+      }catch{}
+      let lsChats:any[]=[]
+      try{
+        const raw=localStorage.getItem(perKey); lsChats=raw?JSON.parse(raw):[]
+        const delRaw=localStorage.getItem(dKey); const deletedIds=delRaw?JSON.parse(delRaw):[]
+        lsChats=lsChats.filter((c:any)=> !deletedIds.includes(c.id))
+      }catch{ lsChats=[] }
+      const merged=[...server]
+      for(const lc of lsChats){ if(!merged.find((c:any)=>c.id===lc.id)) merged.push(lc) }
+      // silinenleri merged'den de at (tombstone)
+      try{
+        const delRaw2=localStorage.getItem(dKey); const deletedIds2=delRaw2?JSON.parse(delRaw2):[]
+        const finalMerged=merged.filter((c:any)=> !deletedIds2.includes(c.id))
+        setChats(finalMerged)
+        try{
+          localStorage.setItem(perKey, JSON.stringify(finalMerged))
+          for(const c of finalMerged){
+            try{ localStorage.setItem(chatKey(uid,c.id), JSON.stringify(c)) }catch{}
+          }
+        }catch{}
+        return
+      }catch{}
+      setChats(merged)
+      try{ localStorage.setItem(perKey, JSON.stringify(merged)) }catch{}
+    }catch{
+      try{ if(uid){ const perKey=chatsKey(uid); const ls=localStorage.getItem(perKey); if(ls) setChats(JSON.parse(ls)) } }catch{}
+    }
+  }
   async function loadFriends(){ try{const r=await fetch("/api/friends",{credentials:"include"}); const j=await r.json(); setFriends(j.friends?? j.friendships?? [])}catch{} }
 
   const [selectedFriend, setSelectedFriend] = useState<any>(null)
@@ -46,7 +112,24 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
   async function handleAddFriend(){ if(!addFriendName.trim()) return; setAddFriendBusy(true); setAddFriendMsg(""); try{ const r=await fetch("/api/friends",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({friendUsername:addFriendName.trim()}),credentials:"include"}); const j=await r.json(); if(!r.ok) setAddFriendMsg(j.error||"Eklenemedi"); else { setAddFriendMsg("✓ İstek gönderildi: "+addFriendName.trim()); setAddFriendName(""); loadFriends(); }}catch(e:any){ setAddFriendMsg("Hata: "+e.message)} finally{ setAddFriendBusy(false); setTimeout(()=>setAddFriendMsg(""), 3000)} }
 
   async function createNewChat(){
-    try{ const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:"Yeni Sohbet"}),credentials:"include"}); const data=await res.json(); if(!res.ok){alert(data.error||"Oluşturulamadı"); return} if(data.chat){ try{ const ls=localStorage.getItem("sucuk:chats"); const arr=ls?JSON.parse(ls):[]; arr.unshift(data.chat); localStorage.setItem("sucuk:chats", JSON.stringify(arr)); localStorage.setItem(`sucuk:chat:${data.chat.id}`, JSON.stringify(data.chat)); localStorage.setItem(`sucuk:msgs:${data.chat.id}`, JSON.stringify([])) }catch{}; router.push(`/chat/${data.chat.id}`) } loadChats(); window.dispatchEvent(new CustomEvent("sucuk:chatsChanged")) }catch(e:any){alert("Hata: "+e.message)}
+    try{
+      const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:"Yeni Sohbet"}),credentials:"include"}); const data=await res.json(); if(!res.ok){alert(data.error||"Oluşturulamadı"); return}
+      if(data.chat){
+        try{
+          let uid=user?.id
+          if(!uid){ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) uid=j.user.id }
+          if(uid){
+            const perKey=chatsKey(uid); const ls=localStorage.getItem(perKey); const arr=ls?JSON.parse(ls):[]; arr.unshift(data.chat); localStorage.setItem(perKey, JSON.stringify(arr)); localStorage.setItem(chatKey(uid,data.chat.id), JSON.stringify(data.chat)); localStorage.setItem(msgsKey(uid,data.chat.id), JSON.stringify([]))
+            // silme tombstone'dan çıkar (yeniden oluşturulursa)
+            try{ const dKey=deletedKey(uid); const raw=localStorage.getItem(dKey); if(raw){ let del=JSON.parse(raw); del=del.filter((x:string)=>x!==data.chat.id); localStorage.setItem(dKey, JSON.stringify(del)) } }catch{}
+          }
+        }catch{}
+        router.push(`/chat/${data.chat.id}`)
+      }
+      let uid2=user?.id
+      if(!uid2){ try{ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) uid2=j.user.id }catch{} }
+      loadChats(uid2); window.dispatchEvent(new CustomEvent("sucuk:chatsChanged"))
+    }catch(e:any){alert("Hata: "+e.message)}
   }
   async function saveProfile(){ if(!newUsername.trim()) return; const r=await fetch("/api/profile",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:newUsername}),credentials:"include"}); if(r.ok){alert("Profil güncellendi"); setShowProfile(false); location.reload()} else alert("Güncellenemedi") }
 

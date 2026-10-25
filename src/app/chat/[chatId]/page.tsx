@@ -35,29 +35,23 @@ export default function ChatPage() {
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const endRef = useRef<HTMLDivElement|null>(null)
 
+  function chatsKey(uid:string){ return `sucuk:chats:${uid}` }
+  function chatKey(uid:string,cid:string){ return `sucuk:chat:${uid}:${cid}` }
+  function msgsKey(uid:string,cid:string){ return `sucuk:msgs:${uid}:${cid}` }
+  async function getUid():Promise<string|null>{ try{ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) return j.user.id }catch{}; return null }
+
   async function load(){
     try{
       const res = await fetch(`/api/chat/${chatId}`,{credentials:"include"})
       if(!res.ok){
         const j=await res.json().catch(()=>({error:"Bilinmeyen hata"}));
-        // localStorage fallback — server 404 ama dashboard'da vardı
+        // Güvenlik: localStorage fallback artık per-user ve ownership kontrollü — başkasının sohbeti asla gösterilmez
+        // Eski generic anahtarları temizle (karışma kaynağı)
         try{
-          const lsChat=localStorage.getItem(`sucuk:chat:${chatId}`)
-          const lsChats=localStorage.getItem("sucuk:chats")
-          let fallbackChat=null
-          if(lsChat) fallbackChat=JSON.parse(lsChat)
-          else if(lsChats){ const arr=JSON.parse(lsChats); fallbackChat=arr.find((c:any)=>c.id===chatId) }
-          if(fallbackChat){
-            setChat(fallbackChat); 
-            const lsMsgs=localStorage.getItem(`sucuk:msgs:${chatId}`)
-            setMessages(lsMsgs?JSON.parse(lsMsgs):[]); 
-            setLoadError(null);
-            // sunucuya tekrar oluşturmayı dene (sessiz)
-            fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:fallbackChat.title}),credentials:"include"}).catch(()=>{})
-            return
-          }
+          localStorage.removeItem("sucuk:chats")
+          for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(!k) continue; const parts=k.split(":"); if(k.startsWith("sucuk:chat:") && parts.length===3) localStorage.removeItem(k); if(k.startsWith("sucuk:msgs:") && parts.length===3) localStorage.removeItem(k) }
         }catch{}
-        // Arada bir Vercel cold-start 404 — listeden senkronla, 1 sn sonra tekrar dene (kullanıcı görmez)
+        // Vercel cold-start için senkron retry (sadece server listesinde varsa)
         try{
           const listRes=await fetch("/api/chat",{credentials:"include"})
           const listJson=await listRes.json().catch(()=>({}))
@@ -71,8 +65,14 @@ export default function ChatPage() {
       }
       const data=await res.json()
       setChat(data.chat); setMessages(data.messages??[]); setLoadError(null)
-      try{ localStorage.setItem(`sucuk:chat:${chatId}`, JSON.stringify(data.chat)); localStorage.setItem(`sucuk:msgs:${chatId}`, JSON.stringify(data.messages??[])); const ls=localStorage.getItem("sucuk:chats"); const arr=ls?JSON.parse(ls):[]; if(!arr.find((c:any)=>c.id===data.chat.id)){ arr.unshift(data.chat); localStorage.setItem("sucuk:chats", JSON.stringify(arr)) } }catch{}
-      // artifact auto-detect: son mesajda kod varsa sağ panelde göster
+      try{
+        const uid=await getUid()
+        if(uid){
+          localStorage.setItem(chatKey(uid,chatId), JSON.stringify(data.chat))
+          localStorage.setItem(msgsKey(uid,chatId), JSON.stringify(data.messages??[]))
+          const perKey=chatsKey(uid); const ls=localStorage.getItem(perKey); const arr=ls?JSON.parse(ls):[]; if(!arr.find((c:any)=>c.id===data.chat.id)){ arr.unshift(data.chat); localStorage.setItem(perKey, JSON.stringify(arr)) }
+        }
+      }catch{}
       const last = (data.messages??[]).slice(-1)[0]
       if(last){
         const parts = parseMessageWithCode(last.content)
@@ -86,8 +86,8 @@ export default function ChatPage() {
   useEffect(()=>{ try{ const sp=new URLSearchParams(window.location.search); const f=sp.get("fullscreen"); if(f==="1"||f===null) setIsFullscreen(true); if(f==="0") setIsFullscreen(false)}catch{}},[])
   useEffect(()=>{ const onKey=(e:KeyboardEvent)=>{ if(e.key==="Escape"&&isFullscreen) setIsFullscreen(false)}; window.addEventListener("keydown",onKey); return()=>window.removeEventListener("keydown",onKey)},[isFullscreen])
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth", block:"end"}) },[messages, typingId])
-  // localStorage sync — server 404 olsa bile mesajlar kaybolmaz
-  useEffect(()=>{ try{ if(chatId && messages.length) localStorage.setItem(`sucuk:msgs:${chatId}`, JSON.stringify(messages)) }catch{} },[messages, chatId])
+  // localStorage sync — per-user, silinince tamamen gider
+  useEffect(()=>{ (async()=>{ try{ if(chatId && messages.length){ const uid=await getUid(); if(uid) localStorage.setItem(msgsKey(uid,chatId), JSON.stringify(messages)) } }catch{} })() },[messages, chatId])
 
   // typewriter — Claude fade, not harsh
   useEffect(()=>{
