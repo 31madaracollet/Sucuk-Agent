@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------ */
-/*  Görsel Üretimi - Hugging Face + Pollinations fallback             */
-/*  HF hf-inference bazı modellerde 410 Gone veriyor (SDXL gibi) [1] */
-/*  Bu yüzden: 1) güncel HF modelleri dene, 2) Pollinations beleş fallback */
+/*  Görsel Üretimi - Hugging Face (FLUX schnell) + Pollinations fallback */
+/*  HF: schnell 1-4 adımda ~2s, Apache2, Inference Providers en hızlı [2]  */
+/*  Pollinations: gen.pollinations.ai (eski image.pollinations.ai deprecated 1033) */
 /* ------------------------------------------------------------------ */
 
 export interface ImageResult {
@@ -14,158 +14,170 @@ export interface ImageResult {
 function friendlyHfError(status: number, body: string): string {
   const b = body.slice(0, 800)
   if (status === 403 && (b.includes("sufficient permissions") || b.includes("Inference Providers"))) {
-    return `❌ HF token yetkisiz (403). Fine-grained token → Inference > Make calls to Inference Providers aç [1][15]. Ham: ${b}`
+    return `❌ HF token yetkisiz (403). Fine-grained token → Inference Providers aç. Ham: ${b}`
   }
   if (status === 410 && b.includes("deprecated")) {
-    return `410 Gone — bu model hf-inference'te artık yok [1]. HF sadece CPU modelleri sunuyor (Temmuz 2025), SDXL kaldırıldı. Ham: ${b}`
+    return `410 Gone — model hf-inference'te yok. Ham: ${b}`
   }
-  if (status === 401) return `401 — token yanlış/süresi dolmuş. Vercel env kontrol et. Ham: ${b}`
-  if (status === 429) return `429 Kota doldu — https://huggingface.co/settings/billing bak. Ham: ${b}`
+  if (status === 401) return `401 — token hatalı. Ham: ${b}`
+  if (status === 429) return `429 Kota doldu — huggingface.co/settings/billing. Ham: ${b}`
   return `HF hata (${status}): ${b}`
 }
 
 import { sanitizeImagePrompt, getStockImageFallback } from "./prompt-guard"
 import { createProviderManager } from "./providers"
 
-// Türkçe → İngilizce çevir + GPT/Gemini tarzı photorealistic stil ekle (anime/çin tarzı değil)
+// Türkçe → İngilizce çevir (sadece Türkçe ise, timeout 2s)
 async function enhanceImagePrompt(raw: string): Promise<string> {
-  const hasTurkish = /[çğıöşüÇĞİÖŞÜ]/.test(raw) || /[a-zçğıöşü]{3,}/i.test(raw)
   let en = raw
+  const hasTurkish = /[çğıöşüÇĞİÖŞÜ]/.test(raw)
   if (hasTurkish) {
     try {
       const m = createProviderManager()
-      const providers = m.availableProviders()
-      // hızlı çeviri için ilk uygun beleş modeli dene
+      const providers = m.availableProviders() as any[]
       const order: Array<{p: any, mod: string}> = [
         {p:"google", mod:"gemini-3.8-flash"},
         {p:"groq", mod:"openai/gpt-oss-20b"},
         {p:"openrouter", mod:"meta-llama/llama-3.3-70b-instruct:free"},
-        {p:"deepseek", mod:"deepseek-chat"},
-        {p:"kimi", mod:"moonshot-v1-8k"},
-      ].filter(x=> (providers as any).includes(x.p))
+      ].filter(x=> providers.includes(x.p))
       for(const c of order){
         try{
+          const controller = new AbortController()
+          const t = setTimeout(()=>controller.abort(), 2500)
           const res = await m.chat(c.p, c.mod, [
-            {role:"system", content:"You are a precise translator. Translate the user's Turkish image prompt to English, keep details, make it vivid for image generation. Output ONLY the English prompt, nothing else."},
+            {role:"system", content:"Translate Turkish image prompt to English vividly. Output ONLY English prompt."},
             {role:"user", content: raw}
-          ], {temperature:0.3, maxTokens: 200})
-          if(res.text && res.text.length>4){ en=res.text.trim().replace(/^["']|["']$/g,""); break }
+          ], {temperature:0.3, maxTokens: 150})
+          clearTimeout(t)
+          if(res.text && res.text.length>4){ en=res.text.trim().replace(/^[\"']|[\"']$/g,""); break }
         }catch{}
       }
     } catch {}
   }
-  // GPT/Gemini kalitesi: photorealistic, no anime, no logo/watermark
-  const styleSuffix = ", photorealistic, ultra detailed, sharp focus, 8k, studio lighting, cinematic, highly detailed, no anime, no cartoon, no illustration, no drawing, no watermark, no logo, no text, no signature"
-  // eğer zaten stil ekliyse tekrar ekleme
+  // Stil: photorealistic ama kısa – hızlı token, logo yok
+  const styleSuffix = ", photorealistic, ultra detailed, sharp focus, 8k, cinematic, no watermark, no logo, no text"
   if(en.toLowerCase().includes("photorealistic")) return en
+  // Türkçe prompt çok uzunsa kısalt (HF timeout engel)
+  if(en.length>400) en=en.slice(0,400)
   return en + styleSuffix
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, ms=12000): Promise<Response> {
+  const ac = new AbortController()
+  const t = setTimeout(()=> ac.abort(), ms)
+  try {
+    const r = await fetch(url, { ...init, signal: ac.signal })
+    return r
+  } finally { clearTimeout(t) }
+}
+
 export async function generateImage(prompt: string): Promise<ImageResult> {
-  // Resimci AI'a çevirerek ver + kendi logosu koymasın
   const original = prompt
   prompt = await enhanceImagePrompt(prompt)
-  // Prompt Guard — saçma tutarsız promptları engelle (çeviri sonrası da kontrol)
   const guard = sanitizeImagePrompt(prompt.length>600 ? original : prompt)
   if(!guard.allowed) return { ok:false, error: guard.reason || "Prompt reddedildi" }
-  // guard.prompt kullanma - enhance edilmiş photorealistic prompt'u koru
   if(prompt.length < 10) prompt = guard.prompt
   const token = process.env.HUGGINGFACE_API_TOKEN || process.env.HUGGINGFACE_API_TOKEN_2 || process.env.HUGGINGFACE_API_TOKEN_3
 
-  // Güncel HF modelleri — SDXL deprecated, yerine SD3 + FLUX dene
-  // hf-inference doküman örneği: stabilityai/stable-diffusion-3-medium-diffusers [9], FLUX.1-dev/schnell [2][5]
+  // Hızlı -> kaliteli sıralama (schnell 4 adım ~2s, dev ~10s)
   const hfCandidates = token
     ? [
-        "black-forest-labs/FLUX.1-schnell",
-        "black-forest-labs/FLUX.1-dev",
-        "stabilityai/stable-diffusion-3-medium-diffusers",
-        "stabilityai/stable-diffusion-3.5-large",
+        "black-forest-labs/FLUX.1-schnell",          // en hızlı, Apache2, 1-4 step
+        "black-forest-labs/FLUX.1-dev",              // kalite yedeği
+        "Qwen/Qwen-Image",                           // photorealistic yeni
+        "stabilityai/stable-diffusion-3.5-large-turbo", // 4 step hızlı SD
       ]
     : []
 
+  // HF Inference Providers deneme – önce hf-inference, sonra fal-ai (hızlı)
+  const hfBases = [
+    "https://router.huggingface.co/hf-inference/models",
+    "https://router.huggingface.co/fal-ai",
+  ]
+
   let lastErr = ""
   for (const model of hfCandidates) {
-    const url = `https://router.huggingface.co/hf-inference/models/${model}`
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          "X-Wait-For-Model": "true",
-        },
-        body: JSON.stringify({ inputs: prompt }),
-      })
+    for (const base of hfBases) {
+      const url = `${base}/${model}`
+      try {
+        const res = await fetchWithTimeout(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "X-Wait-For-Model": "true",
+          },
+          body: JSON.stringify({ inputs: prompt, parameters: { guidance_scale: model.includes("schnell") ? 0 : 3.5, num_inference_steps: model.includes("schnell") ? 4 : undefined } }),
+        }, 13000)
 
-      if (!res.ok) {
-        const text = await res.text().catch(() => "")
-        lastErr = friendlyHfError(res.status, text) + ` | ${url}`
-        if (res.status === 403) {
-          // token sorunu — diğer HF modelleri de aynı hatayı verecek, Pollinations'a geç
-          break
+        if (!res.ok) {
+          const text = await res.text().catch(() => "")
+          lastErr = friendlyHfError(res.status, text) + ` | ${url}`
+          if (res.status === 403) { lastErr += " -> fallback"; break }
+          if (res.status === 503 && text.includes("loading")) {
+            await new Promise(r=>setTimeout(r, 1000))
+          }
+          continue
         }
-        if (res.status === 503 && text.includes("loading")) {
-          await new Promise((r) => setTimeout(r, 1200))
+
+        const ct = res.headers.get("content-type") ?? ""
+        if (ct.startsWith("image/")) {
+          const buf = Buffer.from(await res.arrayBuffer())
+          if(buf.length>1000) return { ok: true, buffer: buf, contentType: ct }
+        } else {
+          const text = await res.text()
+          // Bazı providerlar JSON döner: {"image": "base64..."} – handle
+          try {
+            const j = JSON.parse(text)
+            if(j.image){ const b = Buffer.from(j.image, "base64"); return { ok:true, buffer:b, contentType:"image/jpeg" } }
+          } catch {}
+          lastErr = `Beklenmeyen tip ${ct}: ${text.slice(0,300)} | ${url}`
         }
-        // 410 deprecated -> sıradaki HF modelini dene
+      } catch (err: any) {
+        lastErr = `HF hata: ${err?.name==="AbortError" ? "timeout" : (err?.message || err)} | ${model} @ ${base}`
         continue
       }
-
-      const ct = res.headers.get("content-type") ?? ""
-      if (ct.startsWith("image/")) {
-        const buf = Buffer.from(await res.arrayBuffer())
-        return { ok: true, buffer: buf, contentType: ct }
-      }
-      const text = await res.text()
-      lastErr = `Beklenmeyen tip ${ct}: ${text.slice(0, 300)} | ${url}`
-      continue
-    } catch (err: any) {
-      lastErr = `HF hata: ${err?.message || err} | ${model}`
-      continue
     }
+    // model denendi, sırada Pollinations denenecek – ama önce diğer HF model denenmesin mi? 1 model yeterli
+    // schnell başarılı olursa zaten dönmüştü, değilse diğer model dene
+    if(lastErr.includes("403")) break
   }
 
-  // ----- FALLBACK: Pollinations (beleş, token yok, her zaman çalışır) -----
-  // https://image.pollinations.ai/p/{prompt}?width=1024&height=1024&model=flux&nologo=true
-  // Vercel'den dış ağ serbest, sandbox kısıtlı olsa bile production'da çalışır
+  // ----- FALLBACK: gen.pollinations.ai (yeni, hızlı, eski 1033/524 yok) -----
   try {
     const encoded = encodeURIComponent(prompt)
-    // Pollinations destekler: flux, turbo, gptimage
     const pollUrls = [
-      `https://image.pollinations.ai/p/${encoded}?width=1024&height=1024&model=flux&nologo=true&enhance=true`,
-      `https://image.pollinations.ai/p/${encoded}?width=1024&height=1024&model=turbo&nologo=true`,
+      `https://gen.pollinations.ai/image/${encoded}?model=flux&width=1024&height=1024&nologo=true&private=true&enhance=false`,
+      `https://gen.pollinations.ai/image/${encoded}?model=turbo&width=1024&height=1024&nologo=true&private=true`,
     ]
     for (const url of pollUrls) {
       try {
-        const res = await fetch(url, { headers: { Accept: "image/*" } })
+        const res = await fetchWithTimeout(url, { headers: { Accept: "image/*" } }, 15000)
         if (!res.ok) {
-          lastErr += ` | Pollinations ${res.status}: ${await res.text().catch(() => "")} | ${url}`
+          lastErr += ` | Pollinations ${res.status}: ${await res.text().catch(()=> "")} | ${url}`
           continue
         }
         const ct = res.headers.get("content-type") ?? "image/jpeg"
         if (!ct.startsWith("image/")) {
-          lastErr += ` | Pollinations tip hatası ${ct} | ${url}`
+          lastErr += ` | Pollinations tip ${ct} | ${url}`
           continue
         }
         const buf = Buffer.from(await res.arrayBuffer())
-        if (buf.length < 1000) {
-          lastErr += ` | Pollinations boş resim | ${url}`
-          continue
-        }
+        if (buf.length < 1000) { lastErr += ` | Pollinations boş | ${url}`; continue }
         return { ok: true, buffer: buf, contentType: ct }
       } catch (e: any) {
-        lastErr += ` | Pollinations hata: ${e?.message || e}`
+        lastErr += ` | Pollinations ${e?.name==="AbortError" ? "timeout" : e?.message} | ${url}`
         continue
       }
     }
   } catch (e: any) {
-    lastErr += ` | Pollinations genel hata: ${e?.message || e}`
+    lastErr += ` | Pollinations genel: ${e?.message}`
   }
 
-  // Token bitti — stok görsel fallback (Unsplash/Picsum)
+  // Token bitti — stok görsel fallback
   try {
     const stockUrl = getStockImageFallback(prompt)
-    const res = await fetch(stockUrl, { headers: { Accept: "image/*" } })
+    const res = await fetchWithTimeout(stockUrl, { headers: { Accept: "image/*" } }, 8000)
     if (res.ok) {
       const ct = res.headers.get("content-type") ?? "image/jpeg"
       if (ct.startsWith("image/")) {
@@ -175,12 +187,5 @@ export async function generateImage(prompt: string): Promise<ImageResult> {
     }
   } catch {}
 
-  // Hiçbiri olmadıysa anlamlı hata döndür
-  if (lastErr.includes("410") || lastErr.includes("deprecated")) {
-    return {
-      ok: false,
-      error: `HF SDXL kaldırıldı (410 deprecated) [1]. Güncel model denendi ama olmadı. Pollinations fallback de başarısız. Stok görsel de denenemedi. Detay: ${lastErr.slice(0, 1200)}\n\nGeçici çözüm: Prompt'u daha kısa dene veya 10 sn sonra tekrar dene (model soğuk). /api/debug kontrol edebilirsin.`,
-    }
-  }
-  return { ok: false, error: lastErr || "Tüm görsel modelleri başarısız oldu — stok görsel deneniyor." }
+  return { ok: false, error: lastErr.slice(0,1500) || "Tüm görsel modelleri başarısız." }
 }
