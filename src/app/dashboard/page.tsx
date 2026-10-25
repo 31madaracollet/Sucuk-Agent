@@ -59,6 +59,20 @@ export default function DashboardPage() {
           localStorage.setItem(perKey, JSON.stringify(final))
           for(const c of final){ try{ localStorage.setItem(chatKey(uid,c.id), JSON.stringify(c)) }catch{} }
         }catch{}
+        // Vercel ephemeral kayıp: server sıfır ama local doluysa, eksikleri restore et (aynı id ile)
+        try{
+          const missing = finalMerged.filter((c:any)=> !serverChats.find((s:any)=>s.id===c.id))
+          for(const m of missing.slice(0,8)){
+            await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:m.title, restoreId:m.id}),credentials:"include"}).catch(()=>{})
+            // mesajları da geri yükle
+            try{
+              const msgsRaw=localStorage.getItem(msgsKey(uid,m.id)); const msgs=msgsRaw?JSON.parse(msgsRaw):[]
+              for(const msg of msgs.slice(0,50)){
+                if(msg.sender==="user" && msg.content) await fetch(`/api/chat/${m.id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:msg.content}),credentials:"include"}).catch(()=>{})
+              }
+            }catch{}
+          }
+        }catch{}
       }catch{ setChats(serverChats) }
       setAnnouncements(aData.announcements??[]); setLoading(false)
     }catch{

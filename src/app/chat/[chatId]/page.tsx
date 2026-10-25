@@ -45,11 +45,31 @@ export default function ChatPage() {
       const res = await fetch(`/api/chat/${chatId}`,{credentials:"include"})
       if(!res.ok){
         const j=await res.json().catch(()=>({error:"Bilinmeyen hata"}));
-        // Güvenlik: localStorage fallback artık per-user ve ownership kontrollü — başkasının sohbeti asla gösterilmez
         // Eski generic anahtarları temizle (karışma kaynağı)
         try{
           localStorage.removeItem("sucuk:chats")
           for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(!k) continue; const parts=k.split(":"); if(k.startsWith("sucuk:chat:") && parts.length===3) localStorage.removeItem(k); if(k.startsWith("sucuk:msgs:") && parts.length===3) localStorage.removeItem(k) }
+        }catch{}
+        // Per-user restore: server 404 ama local'de bu kullanıcıya aitse aynı id ile geri oluştur (ephemeral kayıp)
+        try{
+          const uid=await getUid()
+          if(uid){
+            let cached:any=null
+            try{ const raw=localStorage.getItem(chatKey(uid,chatId)); if(raw) cached=JSON.parse(raw)}catch{}
+            if(!cached){ try{ const perRaw=localStorage.getItem(chatsKey(uid)); const arr=perRaw?JSON.parse(perRaw):[]; cached=arr.find((c:any)=>c.id===chatId)}catch{} }
+            if(cached && cached.userId===uid){
+              setLoadError("♻️ Sohbet sunucuda kaybolmuş — aynı linkle geri yükleniyor…")
+              const r2=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:cached.title||"Geri yüklenen", restoreId:chatId}),credentials:"include"})
+              if(r2.ok){
+                // mesajları da geri yükle
+                try{ const msgsRaw=localStorage.getItem(msgsKey(uid,chatId)); const msgs=msgsRaw?JSON.parse(msgsRaw):[]; for(const m of msgs.slice(0,40)){ if(m.sender==="user"&&m.content) await fetch(`/api/chat/${chatId}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:m.content}),credentials:"include"}).catch(()=>{}) } }catch{}
+                setTimeout(()=>load(), 600)
+                return
+              }
+            }
+            // silinmiş mi kontrol (tombstone) — geri yükleme yapma
+            try{ const dRaw=localStorage.getItem(`sucuk:deleted:${uid}`); const del=dRaw?JSON.parse(dRaw):[]; if(del.includes(chatId)){ setLoadError("Bu sohbet silindi — tamamen kaldırıldı."); return } }catch{}
+          }
         }catch{}
         // Vercel cold-start için senkron retry (sadece server listesinde varsa)
         try{

@@ -26,8 +26,9 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { title } = body as { title?: string };
-    const chat = await createChat(user.id, title || "Yeni Sohbet");
+    const { title, restoreId, id: restoreId2 } = body as { title?: string; restoreId?: string; id?: string };
+    const rid = restoreId || restoreId2;
+    const chat = await createChat(user.id, title || "Yeni Sohbet", rid);
     return NextResponse.json({ ok: true, chat }, { status: 201 });
   } catch (err: any) {
     return NextResponse.json({ error: "Sohbet oluşturulamadı: " + (err?.message ?? String(err)) }, { status: 500 });

@@ -418,10 +418,15 @@ export async function listChats(userId: string): Promise<Chat[]> {
     .sort((a, b) => (b.updatedAt < a.updatedAt ? -1 : 1))
 }
 
-export async function createChat(userId: string, title = "Yeni Sohbet"): Promise<Chat> {
+export async function createChat(userId: string, title = "Yeni Sohbet", restoreId?: string): Promise<Chat> {
   try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
+  const wantedId = restoreId && /^[a-zA-Z0-9_-]{6,64}$/.test(restoreId.replace(/-/g,"")) ? restoreId : undefined
+  if (wantedId) {
+    const ex = demo.chats.get(wantedId)
+    if (ex) { if (ex.userId === userId) return ex }
+  }
   const chat: Chat = {
-    id: id(),
+    id: wantedId || id(),
     userId,
     title,
     createdAt: now(),
