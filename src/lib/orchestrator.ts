@@ -35,15 +35,15 @@ export function routeRequest(message: string): RouteDecision {
     "debug", "hata ayikla", "script", "proje", "kutuphane", "tailwind",
     "supabase", "vercel", "node", "npm", "component", "hook",
   ]
-  // Kod — beleşleri döndür, hep Groq olmasın (müfettiş şikayeti)
+  // Kod — Groq hariç, araştırma için Groq kalsın (kullanıcı isteği)
   if (hasAny(m, codeKeywords)) {
     const beleş: Array<{provider: ProviderId, model: string}> = [
-      { provider: "groq", model: "openai/gpt-oss-120b" },
       { provider: "deepseek", model: "deepseek-chat" },
       { provider: "kimi", model: "moonshot-v1-8k" },
       { provider: "openrouter", model: "anthropic/claude-sonnet-5.5" },
       { provider: "nvidia", model: "nvidia/llama-3.3-nemotron-super-49b-v1" },
       { provider: "google", model: "gemini-3.8-flash" },
+      { provider: "huggingface", model: "Qwen/Qwen2.5-Coder-7B-Instruct" },
     ]
     let h=0; for(let i=0;i<m.length;i++) h=(h*31 + m.charCodeAt(i))>>>0
     const pick=beleş[h % beleş.length]
@@ -76,12 +76,13 @@ export function routeRequest(message: string): RouteDecision {
     "nedir", "kimdir", "nerede", "nasil alinir", "hava durumu", "doviz",
     "borsa", "son dakika", "gundem",
   ]
+  // Araştırma — Groq burada olabilir (kullanıcı onay verdi)
   if (hasAny(m, searchKeywords) || m.startsWith("ara ") || m.includes(" web ")) {
     const picks: Array<{provider: ProviderId, model: string}> = [
       { provider: "groq", model: "openai/gpt-oss-120b" },
+      { provider: "groq", model: "openai/gpt-oss-20b" },
       { provider: "google", model: "gemini-3.8-flash" },
-      { provider: "openrouter", model: "anthropic/claude-sonnet-5.5" },
-      { provider: "kimi", model: "moonshot-v1-8k" },
+      { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" },
     ]
     let h=0; for(let i=0;i<m.length;i++) h=(h*31 + m.charCodeAt(i))>>>0
     const pk=picks[h % picks.length]
@@ -103,14 +104,14 @@ export function routeRequest(message: string): RouteDecision {
     }
   }
 
-  // Varsayılan genel sohbet — rotasyon (hep Groq olmasın)
+  // Genel sohbet — kod/söz için Groq yok, araştırma için Groq var
   const genel: Array<{provider: ProviderId, model: string}> = [
-    { provider: "groq", model: "openai/gpt-oss-20b" },
     { provider: "google", model: "gemini-3.8-flash" },
     { provider: "kimi", model: "moonshot-v1-8k" },
     { provider: "openrouter", model: "anthropic/claude-sonnet-5.5" },
     { provider: "nvidia", model: "nvidia/llama-3.3-nemotron-super-49b-v1" },
     { provider: "deepseek", model: "deepseek-chat" },
+    { provider: "huggingface", model: "Qwen/Qwen2.5-7B-Instruct" },
   ]
   let hh=0; for(let i=0;i<m.length;i++) hh=(hh*31 + m.charCodeAt(i))>>>0
   const g=genel[hh % genel.length]

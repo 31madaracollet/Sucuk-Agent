@@ -25,12 +25,51 @@ function friendlyHfError(status: number, body: string): string {
 }
 
 import { sanitizeImagePrompt, getStockImageFallback } from "./prompt-guard"
+import { createProviderManager } from "./providers"
+
+// Türkçe → İngilizce çevir + GPT/Gemini tarzı photorealistic stil ekle (anime/çin tarzı değil)
+async function enhanceImagePrompt(raw: string): Promise<string> {
+  const hasTurkish = /[çğıöşüÇĞİÖŞÜ]/.test(raw) || /[a-zçğıöşü]{3,}/i.test(raw)
+  let en = raw
+  if (hasTurkish) {
+    try {
+      const m = createProviderManager()
+      const providers = m.availableProviders()
+      // hızlı çeviri için ilk uygun beleş modeli dene
+      const order: Array<{p: any, mod: string}> = [
+        {p:"google", mod:"gemini-3.8-flash"},
+        {p:"groq", mod:"openai/gpt-oss-20b"},
+        {p:"openrouter", mod:"meta-llama/llama-3.3-70b-instruct:free"},
+        {p:"deepseek", mod:"deepseek-chat"},
+        {p:"kimi", mod:"moonshot-v1-8k"},
+      ].filter(x=> (providers as any).includes(x.p))
+      for(const c of order){
+        try{
+          const res = await m.chat(c.p, c.mod, [
+            {role:"system", content:"You are a precise translator. Translate the user's Turkish image prompt to English, keep details, make it vivid for image generation. Output ONLY the English prompt, nothing else."},
+            {role:"user", content: raw}
+          ], {temperature:0.3, maxTokens: 200})
+          if(res.text && res.text.length>4){ en=res.text.trim().replace(/^["']|["']$/g,""); break }
+        }catch{}
+      }
+    } catch {}
+  }
+  // GPT/Gemini kalitesi: photorealistic, no anime, no logo/watermark
+  const styleSuffix = ", photorealistic, ultra detailed, sharp focus, 8k, studio lighting, cinematic, highly detailed, no anime, no cartoon, no illustration, no drawing, no watermark, no logo, no text, no signature"
+  // eğer zaten stil ekliyse tekrar ekleme
+  if(en.toLowerCase().includes("photorealistic")) return en
+  return en + styleSuffix
+}
 
 export async function generateImage(prompt: string): Promise<ImageResult> {
-  // Prompt Guard — saçma tutarsız promptları engelle
-  const guard = sanitizeImagePrompt(prompt)
+  // Resimci AI'a çevirerek ver + kendi logosu koymasın
+  const original = prompt
+  prompt = await enhanceImagePrompt(prompt)
+  // Prompt Guard — saçma tutarsız promptları engelle (çeviri sonrası da kontrol)
+  const guard = sanitizeImagePrompt(prompt.length>600 ? original : prompt)
   if(!guard.allowed) return { ok:false, error: guard.reason || "Prompt reddedildi" }
-  prompt = guard.prompt
+  // guard.prompt kullanma - enhance edilmiş photorealistic prompt'u koru
+  if(prompt.length < 10) prompt = guard.prompt
   const token = process.env.HUGGINGFACE_API_TOKEN || process.env.HUGGINGFACE_API_TOKEN_2 || process.env.HUGGINGFACE_API_TOKEN_3
 
   // Güncel HF modelleri — SDXL deprecated, yerine SD3 + FLUX dene
