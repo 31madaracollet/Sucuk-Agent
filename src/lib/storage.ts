@@ -437,10 +437,20 @@ export async function createChat(userId: string, title = "Yeni Sohbet", restoreI
   const wantedId = restoreId && /^[a-zA-Z0-9_-]{6,64}$/.test(restoreId.replace(/-/g,"")) ? restoreId : undefined
   if (wantedId) {
     const ex = demo.chats.get(wantedId)
-    if (ex) { if (ex.userId === userId) return ex }
+    if (ex) {
+      if (ex.userId === userId) return ex
+      // başkasına ait ID — çakışmayı engelle, yeni ID üret
+    }
   }
+  // çakışma varsa wantedId'yi yeni ID ile değiştir
+  const effectiveId = (() => {
+    if (!wantedId) return undefined
+    const ex = demo.chats.get(wantedId)
+    if (ex && ex.userId !== userId) return undefined // başkasınınki → yeni ID
+    return wantedId
+  })()
   const chat: Chat = {
-    id: wantedId || id(),
+    id: effectiveId || id(),
     userId,
     title,
     createdAt: now(),

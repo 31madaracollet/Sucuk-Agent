@@ -1,6 +1,6 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
-import { Play, Save, Copy, Download, Sparkles, PanelRight, Eye, Github, ChevronDown, Square, Wand2 } from "lucide-react"
+import { Play, Save, Copy, Download, Sparkles, PanelRight, Eye, Github, Square, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CodeBlock } from "@/components/ui/code-block"
 
@@ -8,7 +8,7 @@ const LANGUAGES = ["tsx","ts","javascript","python","html","css","sql","json"] a
 
 export function CodeEditor({ initialCode = "// Agent kod editörü — AI burada yazar\nconsole.log('Merhaba Sucuk-Agent')", language="tsx" }: { initialCode?: string, language?: string }) {
   const [code, setCode] = useState(initialCode)
-  const [displayed, setDisplayed] = useState(initialCode) // canlı izleme için
+  const [displayed, setDisplayed] = useState(initialCode)
   const [output, setOutput] = useState("")
   const [aiPrompt, setAiPrompt] = useState("")
   const [aiLoading, setAiLoading] = useState(false)
@@ -19,7 +19,6 @@ export function CodeEditor({ initialCode = "// Agent kod editörü — AI burada
   const typingRef = useRef<NodeJS.Timeout|null>(null)
   const abortRef = useRef(false)
 
-  // direkt ver — tane tane değil
   const startTypewriter = (full: string) => {
     setDisplayed(full)
     setCode(full)
@@ -52,45 +51,74 @@ export function CodeEditor({ initialCode = "// Agent kod editörü — AI burada
   const askAI = async () => {
     if(!aiPrompt.trim()) return
     setAiLoading(true)
-    setOutput(`🤖 Agent düşünüyor: "${aiPrompt}" — ${lang} için kod üretiyor...`)
+    setOutput(`Agent düşünüyor: "${aiPrompt}" — ${lang} için kod üretiyor... (sadece kod/arama modelleri)`)
     try{
-      const chatRes = await fetch("/api/orchestrator", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ task: aiPrompt, language: lang }), credentials:"include"})
-      if(chatRes.ok){
-        const j = await chatRes.json()
-        const newCode = j.code || j.result || j.text || ""
+      const chatRes = await fetch("/api/code", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ prompt: aiPrompt, language: lang }), credentials:"include"})
+      const j: any = await chatRes.json().catch(async()=> ({ error: await chatRes.text() }))
+      if(chatRes.ok && j.ok){
+        const newCode = j.code || j.text || ""
         if(newCode){
-          // 2. madde: biz söyleyelim o yazsın, biz de izleyelim (canlı)
-          const cleaned = newCode.replace(/^```\w*\n?/,"").replace(/```$/,"").trim()
+          const cleaned = newCode.replace(/^```\w*\n?/, "").replace(/```$/, "").trim()
           startTypewriter(cleaned)
-          setOutput(`✨ Agent ${cleaned.length} karakter, ${cleaned.split("\n").length} satır yazdı — canlı izledin!`)
+          setOutput(`Agent ${cleaned.length} karakter, ${cleaned.split("\n").length} satır yazdı — ${j.usedProvider}/${j.usedModel} (${j.task}) — ön izlemede izle!`)
+          try{
+            await fetch("/api/drive", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ filename: fileName || `agent-${Date.now()}.${lang}`, content: cleaned, language: lang, prompt: aiPrompt, auto: true }), credentials:"include"})
+            window.dispatchEvent(new CustomEvent("sucuk:driveChanged"))
+          }catch{}
+          try{
+            const r=await fetch("/api/auth/me",{credentials:"include"}); const me=await r.json(); if(me.authenticated){ const uid=me.user.id; localStorage.setItem(`sucuk:code:${uid}:${Date.now()}`, JSON.stringify({ fileName, lang, code: cleaned, prompt: aiPrompt })) } 
+          }catch{}
         } else {
-          setOutput("Agent boş döndü, tekrar dene kanka")
+          setOutput("Agent boş döndü — " + (j.error || JSON.stringify(j).slice(0,300)))
         }
       } else {
-        const err = await chatRes.text()
-        setOutput("Hata: " + err.slice(0,500))
+        const errMsg = j?.error || j?.message || "Bilinmeyen hata"
+        setOutput(`Hata: ${errMsg.slice(0,700)}${j?.attempts ? " — denenen: "+JSON.stringify(j.attempts.slice(0,2)): ""}`)
       }
     }catch(e:any){ setOutput("Hata: "+e.message)}
     setAiLoading(false)
   }
 
   const saveToDrive = async () => {
-    const blob = new Blob([code], { type:"text/plain" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href=url; a.download=fileName || `agent-code-${Date.now()}.${lang}`; a.click()
-    URL.revokeObjectURL(url)
-    await fetch("/api/drive", { credentials:"include"})
-    setOutput(`💾 Kaydedildi: ${fileName} (${code.length} karakter) — Drive yedeğe alındı`)
+    const safeName = fileName || `agent-code-${Date.now()}.${lang}`
+    try{
+      const blob = new Blob([code], { type:"text/plain" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href=url; a.download=safeName; a.click()
+      URL.revokeObjectURL(url)
+    }catch{}
+    try{
+      const res = await fetch("/api/drive", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ filename: safeName, content: code, language: lang, prompt: aiPrompt }), credentials:"include"})
+      const j = await res.json().catch(()=> ({}))
+      if(res.ok){
+        setOutput(`Kaydedildi: ${safeName} (${code.length} karakter) — Drive yedeğe alındı${j.driveUrl ? " → "+j.driveUrl : ""} — ön izlemede izle`)
+        try{ window.dispatchEvent(new CustomEvent("sucuk:driveChanged")) }catch{}
+      } else setOutput(`İndirildi: ${safeName} — Drive: ${j.error || res.statusText}`)
+    }catch(e:any){
+      setOutput(`İndirildi: ${safeName} — Drive bağlanamadı: ${e.message} — /workspace → Drive Bağla`)
+    }
+    try{
+      const r=await fetch("/api/auth/me",{credentials:"include"}); const me=await r.json(); if(me.authenticated){ const uid=me.user.id; localStorage.setItem(`sucuk:code:${uid}:${Date.now()}`, JSON.stringify({ fileName: safeName, lang, code, prompt: aiPrompt })) }
+    }catch{}
   }
 
   const pushGithub = async () => {
-    setOutput("🚀 GitHub'a pushlanıyor...")
+    setOutput("GitHub'a pushlanıyor...")
     const res = await fetch("/api/github/push", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ path: fileName, content: code, message: `Agent: ${aiPrompt.slice(0,60)}` }), credentials:"include"})
     const j = await res.json().catch(()=>({}))
-    if(res.ok) setOutput(`✅ GitHub push: ${j.url || j.commit?.html_url || "ok"} — ${fileName}`)
-    else setOutput(`❌ Push hata: ${j.error || res.statusText} — önce /workspace → GitHub bağla`)
+    if(res.ok) setOutput(`GitHub push: ${j.url || j.commit?.html_url || "ok"} — ${fileName}`)
+    else setOutput(`Push hata: ${j.error || res.statusText} — önce /workspace → GitHub bağla`)
   }
+
+  // canlı preview için html/js ise iframe
+  const previewSrcDoc = (() => {
+    if (lang === "html" && code.trim().startsWith("<")) return code
+    if (["tsx","ts","javascript"].includes(lang) && code.includes("export default")) {
+      return `<!doctype html><html><body><div id="root"></div><script type="module">try{${code}}catch(e){document.body.innerHTML='<pre style=color:red>'+e.message+'</pre>'}</script></body></html>`
+    }
+    return null
+  })()
 
   return (
     <div className="grid lg:grid-cols-2 gap-4">
@@ -106,10 +134,9 @@ export function CodeEditor({ initialCode = "// Agent kod editörü — AI burada
           </div>
         </div>
 
-        {/* Canlı izleme stats */}
         <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]">
           <span className="rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-2 py-1 font-mono">{stats.lines} satır • {stats.chars} karakter</span>
-          {isTyping && <span className="rounded-full bg-[var(--ink)] text-[var(--canvas)] px-2 py-1 font-mono">{stats.speed} char/s • izliyorsun 👀</span>}
+          {isTyping && <span className="rounded-full bg-[var(--ink)] text-[var(--canvas)] px-2 py-1 font-mono">{stats.speed} char/s • izliyorsun</span>}
           {isTyping && <Button size="sm" variant="outline" onClick={stopTyping} className="h-6 rounded-full text-xs"><Square className="h-3 w-3"/> Durdur</Button>}
         </div>
 
@@ -127,11 +154,12 @@ export function CodeEditor({ initialCode = "// Agent kod editörü — AI burada
           <Button onClick={pushGithub} variant="outline" className="rounded-full border-[var(--hairline)] bg-[var(--surface)] flex-1"><Github className="h-4 w-4"/> GitHub'a Pushla</Button>
           <Button onClick={saveToDrive} variant="outline" className="rounded-full border-[var(--hairline)] bg-[var(--surface)]"><Download className="h-4 w-4"/> İndir</Button>
         </div>
+        <p className="text-xs text-[var(--muted)] text-center">Sadece kod/arama modelleri — hız {stats.speed} char/s • Drive'a oto-kayıt • ön izleme sağda</p>
       </div>
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] tracking-[0.12em] font-semibold text-[var(--muted)] flex items-center gap-2"><PanelRight className="h-3 w-3"/> ÇIKTI / ARTIFACT {isTyping && <span className="text-amber-600">• CANLI</span>}</p>
+          <p className="text-[10px] tracking-[0.12em] font-semibold text-[var(--muted)] flex items-center gap-2"><PanelRight className="h-3 w-3"/> ÇIKTI / ARTIFACT — ÖN İZLEME {isTyping && <span className="text-amber-600">• CANLI</span>}</p>
           <div className="flex gap-1">
             <button onClick={async()=>{ await navigator.clipboard.writeText(code)}} className="p-2 rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] hover:bg-[var(--surface-cream)]"><Copy className="h-3 w-3"/></button>
             <button onClick={saveToDrive} className="p-2 rounded-[8px] border border-[var(--hairline)] bg-[var(--surface)] hover:bg-[var(--surface-cream)]"><Download className="h-3 w-3"/></button>
@@ -139,13 +167,21 @@ export function CodeEditor({ initialCode = "// Agent kod editörü — AI burada
         </div>
         <div className="h-[420px] rounded-[12px] border border-[var(--hairline)] bg-[var(--surface)] overflow-hidden flex flex-col">
           <div className="flex-1 p-4 overflow-auto font-mono text-sm whitespace-pre-wrap bg-[var(--canvas-soft)] text-[var(--ink)] border-b border-[var(--hairline)]">
-            {isTyping ? <span className="inline-flex items-center gap-2">{output}<span className="h-4 w-[2px] bg-[var(--coral)] animate-pulse inline-block"/></span> : (output || "Çıktı burada — Run'a bas. AI yazarken canlı izle 👀")}
+            {isTyping ? <span className="inline-flex items-center gap-2">{output}<span className="h-4 w-[2px] bg-[var(--coral)] animate-pulse inline-block"/></span> : (output || "Çıktı burada — Run'a bas. AI yazarken canlı izle")}
           </div>
-          <div className="p-3 bg-[var(--surface)] max-h-[220px] overflow-auto">
-            <CodeBlock code={isTyping ? displayed : code} language={lang} prompt={aiPrompt}/>
-          </div>
+          {/* Gerçek ön izleme: html ise iframe, değilse CodeBlock */}
+          {previewSrcDoc ? (
+            <div className="p-2 bg-white flex-1 flex flex-col min-h-0">
+              <p className="text-[10px] text-[var(--muted)] mb-1">Ön izleme (iframe)</p>
+              <iframe srcDoc={previewSrcDoc} className="w-full flex-1 rounded-[8px] border border-[var(--hairline)] bg-white" sandbox="allow-scripts" />
+            </div>
+          ) : (
+            <div className="p-3 bg-[var(--surface)] max-h-[220px] overflow-auto">
+              <CodeBlock code={isTyping ? displayed : code} language={lang} prompt={aiPrompt}/>
+            </div>
+          )}
         </div>
-        <p className="text-xs text-[var(--muted)] text-center">2. madde: Sen söyle, AI yazsın, sen izle — hız {stats.speed} char/s • GitHub tek tık</p>
+        <p className="text-xs text-[var(--muted)] text-center">Agent modu: Sen söyle, AI yazsın, Drive'a kaydedilsin, sağda ön izle</p>
       </div>
     </div>
   )
