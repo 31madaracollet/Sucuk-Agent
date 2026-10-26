@@ -22,16 +22,7 @@ export async function POST(req: NextRequest){
   // Drive'a yükleme simülasyonu: data URI olarak sakla, gerçek Drive entegrasyonu Arena connector ile dışarıda da yapılabilir
   const dataUrl = `data:${mime};base64,${base64}`
 
-  const dm = await addDirectMessage(user.id, receiverId, content || file.name)
-  // storage helper'ı mediaUrl destekliyor — db'ye patch
-  const { supabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase")
-  if(isSupabaseConfigured && supabaseAdmin){
-    await supabaseAdmin.from("direct_messages").update({ media_url: dataUrl, media_type: mediaType }).eq("id", dm.id)
-  } else {
-    // demo fallback: dms map'ini güncelle (storage.ts içindeki demo.dms üzerinde patch gerek ama şimdilik dm'ye ekle)
-    ;(dm as any).mediaUrl = dataUrl
-    ;(dm as any).mediaType = mediaType
-  }
+  const dm = await addDirectMessage(user.id, receiverId, content || file.name, dataUrl, mediaType)
 
-  return NextResponse.json({ ok:true, message: { ...dm, mediaUrl: dataUrl, mediaType } })
+  return NextResponse.json({ ok:true, message: dm })
 }

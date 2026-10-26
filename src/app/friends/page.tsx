@@ -137,7 +137,36 @@ export default function FriendsPage(){
     }catch{}
     setNewMessage(""); loadFriends()
   }
-  async function sendMedia(file:File){ if(!otherId) return; const fd=new FormData(); fd.append("file",file); fd.append("receiverId",otherId); fd.append("content",newMessage); const res=await fetch("/api/media/upload",{method:"POST",body:fd,credentials:"include"}); if(res.ok){ setNewMessage(""); loadFriends()} else alert("Medya gönderilemedi") }
+  async function sendMedia(file:File){ if(!otherId) return
+    // hızlı önizleme — hemen göster, sonra sunucuya gönder
+    const previewMime = file.type || ""
+    const previewKind = previewMime.startsWith("image/") ? "image" : previewMime.startsWith("video/") ? "video" : previewMime.startsWith("audio/") ? "audio" : (/\.(jpg|jpeg|png|webp|gif)$/i.test(file.name) ? "image" : /\.(mp4|webm|mov)$/i.test(file.name) ? "video" : /\.(mp3|wav|ogg|webm|m4a)$/i.test(file.name) ? "audio" : null)
+    let previewUrl: string | null = null
+    try{ previewUrl = await new Promise<string>((res,rej)=>{ const r=new FileReader(); r.onload=()=> res(r.result as string); r.onerror=rej; r.readAsDataURL(file) }) }catch{}
+    // optimistic ekle
+    try{
+      const uid=await getUidLS()
+      if(uid && previewUrl){
+        const optimistic:any = { id:`tmp-${Date.now()}`, senderId:uid, receiverId:otherId, content: newMessage || file.name, createdAt:new Date().toISOString(), mediaUrl: previewUrl, mediaType: previewKind, media_url: previewUrl, media_type: previewKind }
+        setDms(prev=> [...prev, optimistic])
+        const dk=lsKey(`dm:${uid}:${otherId}`); const cur=JSON.parse(localStorage.getItem(dk)||"[]"); cur.push(optimistic); localStorage.setItem(dk, JSON.stringify(cur))
+      }
+    }catch{}
+    const fd=new FormData(); fd.append("file",file); fd.append("receiverId",otherId); fd.append("content",newMessage)
+    const res=await fetch("/api/media/upload",{method:"POST",body:fd,credentials:"include"})
+    if(res.ok){
+      const j=await res.json().catch(()=>null)
+      const saved = j?.message
+      if(saved){
+        // tmp'yi gerçekle değiştir
+        setDms(prev=> prev.map((x:any)=> x.id?.startsWith("tmp-") && x.content===(newMessage||file.name) ? saved : x))
+        try{
+          const uid=await getUidLS(); if(uid){ const dk=lsKey(`dm:${uid}:${otherId}`); const cur=JSON.parse(localStorage.getItem(dk)||"[]"); const idx=cur.findIndex((x:any)=> x.id?.startsWith("tmp-") && x.content===(newMessage||file.name)); if(idx>=0){ cur[idx]=saved; localStorage.setItem(dk, JSON.stringify(cur)) } }
+        }catch{}
+      }
+      setNewMessage(""); loadFriends()
+    } else alert("Medya gönderilemedi")
+  }
 
   const startRecording=async()=>{
     try{
@@ -242,17 +271,30 @@ export default function FriendsPage(){
                           <span className="text-xs text-emerald-600 flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"/> Drive’a yazılıyor</span>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[var(--canvas)]">
-                          {dms.length===0 ? <p className="text-center text-sm text-[var(--muted)]">Henüz mesaj yok — WhatsApp gibi at.</p> : dms.map((m:any)=>(
+                          {dms.length===0 ? <p className="text-center text-sm text-[var(--muted)]">Henüz mesaj yok — WhatsApp gibi at.</p> : dms.map((m:any)=>{
+                            const rawUrl = m.mediaUrl || m.media_url
+                            const rawType = m.mediaType || m.media_type
+                            const inferByUrl = rawUrl?.startsWith("data:image") ? "image" : rawUrl?.startsWith("data:video") ? "video" : rawUrl?.startsWith("data:audio") ? "audio" : null
+                            const inferByName = m.content ? (/\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(m.content) ? "image" : /\.(mp4|webm|mov|avi)$/i.test(m.content) ? "video" : /\.(mp3|wav|ogg|m4a|webm)$/i.test(m.content) ? "audio" : null) : null
+                            const mt = rawType || inferByUrl || inferByName
+                            const hasMedia = !!rawUrl
+                            return (
                             <div key={m.id} className={`flex group ${m.senderId===otherId ? "justify-start" : "justify-end"}`}>
                               <div className={`max-w-[75%] rounded-[16px] px-3 py-2 text-sm ${m.senderId===otherId ? "bg-[var(--surface)] border border-[var(--hairline)] text-[var(--ink)]" : "bg-[var(--ink)] text-[var(--canvas)]"}`}>
-                                {m.mediaUrl && m.mediaType==="image" && <img src={m.mediaUrl} alt="media" className="max-w-[220px] rounded-[10px] mb-2"/>}
-                                {m.mediaUrl && m.mediaType==="video" && <video src={m.mediaUrl} controls className="max-w-[220px] rounded-[10px] mb-2"/>}
-                                {m.mediaUrl && m.mediaType==="audio" && <audio src={m.mediaUrl} controls className="w-full mb-2"/>}
-                                <p>{m.content && !m.content.startsWith("data:") ? m.content : (!m.mediaUrl ? "📎 Medya" : "")}</p>
-                                <div className="text-[10px] opacity-60 mt-1 flex items-center gap-2">{new Date(m.createdAt).toLocaleTimeString("tr-TR")} • {m.mediaType ? `Drive: ${m.mediaType}` : "Supabase"} {m.senderId!==otherId && <button onClick={async()=>{ if(!confirm("Silinsin mi? Drive’dan da silinecek")) return; await fetch(`/api/messages?messageId=${m.id}`,{method:"DELETE",credentials:"include"}); loadFriends()}} className="hidden group-hover:inline text-red-400">Sil</button>}</div>
+                                {hasMedia && mt==="image" && <a href={rawUrl} target="_blank" rel="noopener noreferrer" className="block"><img src={rawUrl} alt={m.content || "resim"} className="max-w-[220px] rounded-[10px] mb-2 cursor-pointer hover:opacity-90" onClick={e=>{ /* mobilde direkt aç */ }} /></a>}
+                                {hasMedia && mt==="video" && <video src={rawUrl} controls playsInline className="max-w-[260px] rounded-[10px] mb-2 cursor-pointer" onClick={e=> (e.target as HTMLVideoElement).paused ? (e.target as HTMLVideoElement).play() : null } />}
+                                {hasMedia && mt==="audio" && <audio src={rawUrl} controls className="w-full max-w-[240px] mb-2"/>}
+                                {hasMedia && !mt && <a href={rawUrl} target="_blank" rel="noopener noreferrer" className="block mb-2 text-xs underline break-all">{m.content || "Dosya"} — aç</a>}
+                                {/* dosya ismi her zaman değil, sadece medya yoksa veya caption varsa */}
+                                {m.content && !m.content.startsWith("data:") && (
+                                  hasMedia && mt ? <p className="text-xs opacity-80">{m.content}</p> : <p>{m.content}</p>
+                                )}
+                                {!m.content && !hasMedia && <p>📎 Medya</p>}
+                                <div className="text-[10px] opacity-60 mt-1 flex items-center gap-2">{new Date(m.createdAt).toLocaleTimeString("tr-TR")} • {mt ? `${mt} • tıkla aç` : "Supabase"} {m.senderId!==otherId && <button onClick={async()=>{ if(!confirm("Silinsin mi? Drive’dan da silinecek")) return; await fetch(`/api/messages?messageId=${m.id}`,{method:"DELETE",credentials:"include"}); loadFriends()}} className="hidden group-hover:inline text-red-400">Sil</button>}</div>
                               </div>
                             </div>
-                          ))}
+                            )
+                          })}
                         </div>
                         <div className="border-t border-[var(--hairline)] p-3 bg-[var(--surface)] flex gap-2">
                           <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={e=>{const f=e.target.files?.[0]; if(f) sendMedia(f)}}/>

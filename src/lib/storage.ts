@@ -706,7 +706,7 @@ export async function listDirectMessages(userId: string, otherId: string): Promi
   return all.filter((m) => (m.senderId === userId && m.receiverId === otherId) || (m.senderId === otherId && m.receiverId === userId))
 }
 
-export async function addDirectMessage(senderId: string, receiverId: string, content: string): Promise<DirectMessage> {
+export async function addDirectMessage(senderId: string, receiverId: string, content: string, mediaUrl?: string | null, mediaType?: string | null): Promise<DirectMessage> {
   try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const m: DirectMessage = {
     id: id(),
@@ -715,7 +715,8 @@ export async function addDirectMessage(senderId: string, receiverId: string, con
     content,
     read: false,
     createdAt: now(),
-  }
+    ...(mediaUrl ? { mediaUrl, mediaType: mediaType || null } as any : {}),
+  } as any
   const dbRow = toDbDM(m)
   if (isSupabaseConfigured && supabaseAdmin) {
     const { error } = await supabaseAdmin.from("direct_messages").insert([dbRow])
