@@ -132,9 +132,9 @@ function getTokenFromHeaders(): string | undefined {
 }
 
 export function getCurrentUser(): SessionUser | null {
-  // per-tab header oncelikli — iki ayri oturum ayni tarayicida karismasin, cookie yedek
+  // per-tab oturum: sadece header (sessionStorage) gecerli — cookie tek basina yetmez
+  // yeni sekme cookie ile gelse bile header yoksa login'e atilir, refresh'te header korunur
   let token = getTokenFromHeaders()
-  if (!token) token = getSessionCookie()
   if (!token) return null
   return validateSession(token)
 }
@@ -151,7 +151,6 @@ export function getCurrentUserFromRequest(req: { cookies: { get: (name: string) 
       token = h.get("x-sucuk-token") || h.get("x-sucuk-session") || h.get("authorization")?.replace(/^Bearer\s+/i, "") || h.get("Authorization")?.replace(/^Bearer\s+/i, "")
       if (token) token = token.trim()
     }
-    if (!token) token = req.cookies.get(SESSION_NAME)?.value
     if (!token) return null
     return validateSession(token)
   } catch { return null }
