@@ -62,11 +62,12 @@ export function CodeEditor({ initialCode = "// Agent kod editörü — AI burada
           startTypewriter(cleaned)
           setOutput(`Agent ${cleaned.length} karakter, ${cleaned.split("\n").length} satır yazdı — ${j.usedProvider}/${j.usedModel} (${j.task}) — ön izlemede izle!`)
           try{
-            await fetch("/api/drive", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ filename: fileName || `agent-${Date.now()}.${lang}`, content: cleaned, language: lang, prompt: aiPrompt, auto: true }), credentials:"include"})
+            const res = await fetch("/api/drive", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ filename: fileName || `agent-${Date.now()}.${lang}`, content: cleaned, language: lang, prompt: aiPrompt, auto: true }), credentials:"include"})
+            const jr:any = await res.json().catch(()=>({})); if(jr?.file?.filename) setFileName(jr.file.filename)
             window.dispatchEvent(new CustomEvent("sucuk:driveChanged"))
           }catch{}
           try{
-            const r=await fetch("/api/auth/me",{credentials:"include"}); const me=await r.json(); if(me.authenticated){ const uid=me.user.id; localStorage.setItem(`sucuk:code:${uid}:${Date.now()}`, JSON.stringify({ fileName, lang, code: cleaned, prompt: aiPrompt })) } 
+            const r=await fetch("/api/auth/me",{credentials:"include"}); const me=await r.json(); if(me.authenticated){ const uid=me.user.id; const uname=me.user.username; const safe=uname.replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,24); const prefixed = fileName.startsWith(safe+"-")?fileName:`${safe}-${fileName}`; localStorage.setItem(`sucuk:code:${uid}:${Date.now()}`, JSON.stringify({ fileName: prefixed, lang, code: cleaned, prompt: aiPrompt, username: uname })) }
           }catch{}
         } else {
           setOutput("Agent boş döndü — " + (j.error || JSON.stringify(j).slice(0,300)))
@@ -80,26 +81,33 @@ export function CodeEditor({ initialCode = "// Agent kod editörü — AI burada
   }
 
   const saveToDrive = async () => {
-    const safeName = fileName || `agent-code-${Date.now()}.${lang}`
+    const safeNameRaw = fileName || `agent-code-${Date.now()}.${lang}`
+    // kullanıcı adıyla prefix hemen gösterilsin (hangi hesapla kaydedildiyse)
+    let displayName = safeNameRaw
+    try{
+      const r0=await fetch("/api/auth/me",{credentials:"include"}); const me0=await r0.json(); if(me0.authenticated){ const uname0=me0.user.username; const safe0=uname0.replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,24); if(!safeNameRaw.startsWith(safe0+"-")) displayName = `${safe0}-${safeNameRaw}` }
+    }catch{}
     try{
       const blob = new Blob([code], { type:"text/plain" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
-      a.href=url; a.download=safeName; a.click()
+      a.href=url; a.download=displayName; a.click()
       URL.revokeObjectURL(url)
     }catch{}
     try{
-      const res = await fetch("/api/drive", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ filename: safeName, content: code, language: lang, prompt: aiPrompt }), credentials:"include"})
+      const res = await fetch("/api/drive", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ filename: safeNameRaw, content: code, language: lang, prompt: aiPrompt }), credentials:"include"})
       const j = await res.json().catch(()=> ({}))
       if(res.ok){
-        setOutput(`Kaydedildi: ${safeName} (${code.length} karakter) — Drive yedeğe alındı${j.driveUrl ? " → "+j.driveUrl : ""} — ön izlemede izle`)
+        const finalName = j.file?.filename || displayName
+        if(j.file?.filename) setFileName(j.file.filename)
+        setOutput(`Kaydedildi: ${finalName} (${code.length} karakter) — ${j.file?.username || ""} hesabıyla Drive yedeğe alındı${j.driveUrl ? " → "+j.driveUrl : ""} — ön izlemede izle`)
         try{ window.dispatchEvent(new CustomEvent("sucuk:driveChanged")) }catch{}
-      } else setOutput(`İndirildi: ${safeName} — Drive: ${j.error || res.statusText}`)
+      } else setOutput(`İndirildi: ${displayName} — Drive: ${j.error || res.statusText}`)
     }catch(e:any){
-      setOutput(`İndirildi: ${safeName} — Drive bağlanamadı: ${e.message} — /workspace → Drive Bağla`)
+      setOutput(`İndirildi: ${displayName} — Drive bağlanamadı: ${e.message} — /workspace → Drive Bağla`)
     }
     try{
-      const r=await fetch("/api/auth/me",{credentials:"include"}); const me=await r.json(); if(me.authenticated){ const uid=me.user.id; localStorage.setItem(`sucuk:code:${uid}:${Date.now()}`, JSON.stringify({ fileName: safeName, lang, code, prompt: aiPrompt })) }
+      const r=await fetch("/api/auth/me",{credentials:"include"}); const me=await r.json(); if(me.authenticated){ const uid=me.user.id; const uname=me.user.username; localStorage.setItem(`sucuk:code:${uid}:${Date.now()}`, JSON.stringify({ fileName: displayName, lang, code, prompt: aiPrompt, username: uname })) }
     }catch{}
   }
 

@@ -30,11 +30,15 @@ export default function DashboardPage() {
         fetch("/api/announcements",{credentials:"include"}),
       ])
       const cData=await cRes.json().catch(()=>({chats:[]})); const aData=await aRes.json().catch(()=>({announcements:[]}))
-      const serverChats=cData.chats??[]
+      const serverChatsRaw=cData.chats??[]
       const uid=await getUid()
       if(!uid){
-        setChats(serverChats); setAnnouncements(aData.announcements??[]); setLoading(false); return
+        setChats(serverChatsRaw); setAnnouncements(aData.announcements??[]); setLoading(false); return
       }
+      // server zaten per-user ama ekstra filtre: sadece bu uid'nin sohbetleri
+      const serverChats = serverChatsRaw.filter((c:any)=> !c.userId || c.userId===uid || (c as any).user_id===uid)
+      // hesap değiştiyse eski listeyi hemen temizle
+      setChats([])
       // eski global temizliği
       try{
         localStorage.removeItem("sucuk:chats")
@@ -48,6 +52,8 @@ export default function DashboardPage() {
       try{
         const perKey=chatsKey(uid); const dKey=deletedKey(uid)
         const raw=localStorage.getItem(perKey); let lsChats=raw?JSON.parse(raw):[]
+        // LS'de bile sadece bu kullanıcıya ait olanları al
+        lsChats = lsChats.filter((c:any)=> !c.userId || c.userId===uid)
         const delRaw=localStorage.getItem(dKey); const deletedIds=delRaw?JSON.parse(delRaw):[]
         lsChats=lsChats.filter((c:any)=> !deletedIds.includes(c.id))
         const merged=[...serverChats]

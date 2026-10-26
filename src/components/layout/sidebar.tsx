@@ -100,10 +100,21 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
     if(!uid){
       try{ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) uid=j.user.id }catch{}
     }
+    // hesap değiştiyse eski sohbetleri anında temizle — karışmayı kes
+    if(uid){
+      try{
+        // eğer önceki yüklenen uid farklıysa state'i sıfırla
+        if(user?.id && uid !== user.id) setChats([])
+        // başka kullanıcıya ait global kalmışsa hemen sil, sadece bu uid'yi göster
+        localStorage.removeItem("sucuk:chats")
+      }catch{}
+    }
     try{
       const r=await fetch("/api/chat",{credentials:"include"}); const j=await r.json(); const server=j.chats??[]
+      // server zaten per-user filtreli (user_id eq), ama ekstra güvenlik: sadece bu uid'nin sohbetlerini al
+      const filteredServer = uid ? server.filter((c:any)=> !c.userId || c.userId===uid || c.user_id===uid) : server
       if(!uid){
-        setChats(server)
+        setChats(filteredServer)
         return
       }
       const perKey=chatsKey(uid)
@@ -123,10 +134,12 @@ export function Sidebar({ collapsedDefault = false }: { collapsedDefault?: boole
       let lsChats:any[]=[]
       try{
         const raw=localStorage.getItem(perKey); lsChats=raw?JSON.parse(raw):[]
+        // sadece bu kullanıcıya ait LS kayıtlarını al — userId kontrol
+        lsChats = lsChats.filter((c:any)=> !c.userId || c.userId===uid)
         const delRaw=localStorage.getItem(dKey); const deletedIds=delRaw?JSON.parse(delRaw):[]
         lsChats=lsChats.filter((c:any)=> !deletedIds.includes(c.id))
       }catch{ lsChats=[] }
-      const merged=[...server]
+      const merged=[...filteredServer]
       for(const lc of lsChats){ if(!merged.find((c:any)=>c.id===lc.id)) merged.push(lc) }
       try{
         const delRaw2=localStorage.getItem(dKey); const deletedIds2=delRaw2?JSON.parse(delRaw2):[]

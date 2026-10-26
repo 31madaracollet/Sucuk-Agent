@@ -435,6 +435,7 @@ export async function listChats(userId: string): Promise<Chat[]> {
 export async function createChat(userId: string, title = "Yeni Sohbet", restoreId?: string): Promise<Chat> {
   try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   const wantedId = restoreId && /^[a-zA-Z0-9_-]{6,64}$/.test(restoreId.replace(/-/g,"")) ? restoreId : undefined
+  // Demo kontrol — başkasına ait ID ise engelle
   if (wantedId) {
     const ex = demo.chats.get(wantedId)
     if (ex) {
@@ -442,13 +443,24 @@ export async function createChat(userId: string, title = "Yeni Sohbet", restoreI
       // başkasına ait ID — çakışmayı engelle, yeni ID üret
     }
   }
-  // çakışma varsa wantedId'yi yeni ID ile değiştir
-  const effectiveId = (() => {
-    if (!wantedId) return undefined
-    const ex = demo.chats.get(wantedId)
-    if (ex && ex.userId !== userId) return undefined // başkasınınki → yeni ID
-    return wantedId
-  })()
+  // Supabase kontrol — aynı ID başka kullanıcıda varsa engelle
+  let effectiveId: string | undefined = wantedId
+  if (wantedId && isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { data: existing } = await supabaseAdmin.from("chats").select("id,user_id").eq("id", wantedId).single()
+      if (existing) {
+        if ((existing as any).user_id === userId) {
+          // zaten senin — geri dön
+          return { id: (existing as any).id, userId: (existing as any).user_id, title: (existing as any).title, createdAt: (existing as any).created_at, updatedAt: (existing as any).updated_at } as any
+        } else {
+          effectiveId = undefined // başkasınınki → yeni ID
+        }
+      }
+    } catch {}
+  } else if (wantedId) {
+    const ex2 = demo.chats.get(wantedId)
+    if (ex2 && ex2.userId !== userId) effectiveId = undefined
+  }
   const chat: Chat = {
     id: effectiveId || id(),
     userId,
