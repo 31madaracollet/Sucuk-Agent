@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
+import { SessionProvider } from "@/components/session-provider"
 
 export const metadata: Metadata = {
   title: "Sucuk-Agent — Düşünen Partner (Claude Editorial × Cihaz Gece)",
@@ -21,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.googleapis.com" />
       </head>
       <body className="min-h-full bg-[var(--bg)] text-[var(--fg)] antialiased selection:bg-[#cc785c]/20">
-        <ThemeProvider>{children}</ThemeProvider>
+        <SessionProvider><ThemeProvider>{children}</ThemeProvider></SessionProvider>
       </body>
     </html>
   )

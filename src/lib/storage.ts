@@ -913,18 +913,14 @@ export async function markAllNotificationsRead(userId: string) {
 export async function listProjects(userId: string): Promise<Project[]> {
   try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   if (isSupabaseConfigured && supabase) {
-    // üyesi olduğu projeler
-    const { data: members } = await supabase.from("project_members").select("project_id").eq("user_id", userId)
-    const ids = (members ?? []).map((m: any) => m.project_id)
-    if (ids.length === 0) return []
-    const { data, error } = await supabase.from("projects").select("*").in("id", ids).order("created_at", { ascending: false })
+    // sadece sahibinin projeleri — ortak yok, karisma yok
+    const { data, error } = await supabase.from("projects").select("*").eq("owner_id", userId).order("created_at", { ascending: false })
     if (error) return []
     return (data ?? []).map(fromDbProject)
   }
-  // demo: owner veya member olduğu projeler
+  // demo: sadece owner — üye olunan ortak projeler gizli
   const owned = Array.from(demo.projects.values()).filter(p => p.ownerId === userId)
-  const memberOf = Array.from(demo.projectMembers.entries()).flatMap(([_, arr]) => arr.filter(m => m.userId === userId).map(m => demo.projects.get(m.projectId)!)).filter(Boolean)
-  return [...owned, ...memberOf]
+  return owned
 }
 
 export async function createProject(name: string, description: string, ownerId: string, inviteIds: string[] = []): Promise<Project> {
@@ -939,23 +935,14 @@ export async function createProject(name: string, description: string, ownerId: 
   const dbRow = toDbProject(p)
   if (isSupabaseConfigured && supabaseAdmin) {
     await supabaseAdmin.from("projects").insert([dbRow])
-    // owner üye
+    // sadece owner — ortak davet kapali, karisma onlensin
     await supabaseAdmin.from("project_members").insert([{ id: id(), project_id: p.id, user_id: ownerId, role: "owner", created_at: now() }])
-    for (const uid of inviteIds) {
-      await supabaseAdmin.from("project_members").insert([{ id: id(), project_id: p.id, user_id: uid, role: "member", created_at: now() }])
-      await createNotification(uid, "project_invite", "Projeye davet", `${ownerId} seni "${name}" projesine davet etti`, ownerId)
-    }
+    // inviteIds bilerek yoksayiliyor — ortak proje kaldırıldı
   } else {
     demo.projects.set(p.id, p); try{ saveDemoStore() }catch{}
     const ownerM: ProjectMember = { id: id(), projectId: p.id, userId: ownerId, role: "owner", createdAt: now() }
     demo.projectMembers.set(p.id, [ownerM]); try{ saveDemoStore() }catch{}
-    for (const uid of inviteIds) {
-      const m: ProjectMember = { id: id(), projectId: p.id, userId: uid, role: "member", createdAt: now() }
-      const arr = demo.projectMembers.get(p.id) ?? []
-      arr.push(m)
-      demo.projectMembers.set(p.id, arr); try{ saveDemoStore() }catch{}
-      await createNotification(uid, "project_invite", "Projeye davet", `${ownerId} seni "${name}" projesine davet etti`, ownerId)
-    }
+    // ortak davetleri ekleme — sadece sahibin listesinde kalsin
   }
   return p
 }
