@@ -50,25 +50,41 @@ export default function ChatPage() {
           localStorage.removeItem("sucuk:chats")
           for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(!k) continue; const parts=k.split(":"); if(k.startsWith("sucuk:chat:") && parts.length===3) localStorage.removeItem(k); if(k.startsWith("sucuk:msgs:") && parts.length===3) localStorage.removeItem(k) }
         }catch{}
-        // Per-user restore: server 404 ama local'de bu kullanıcıya aitse aynı id ile geri oluştur (ephemeral kayıp)
+        // Per-user restore: server 404 ama local'de bu kullanıcıya aitse aynı id ile geri oluştur (ephemeral kayıp) — TOKEN YAKMAYACAK şekilde tek seferlik bulk restore
         try{
           const uid=await getUid()
           if(uid){
+            // silinmiş mi kontrol (tombstone) — önce bak, geri yükleme yapma
+            try{ const dRaw=localStorage.getItem(`sucuk:deleted:${uid}`); const del=dRaw?JSON.parse(dRaw):[]; if(del.includes(chatId)){ setLoadError("Bu sohbet silindi — tamamen kaldırıldı."); return } }catch{}
+            // son 5dk içinde denendiyse tekrar deneme (gidip gelme bug'ını kes)
+            const attemptKey = `sucuk:restore-attempt:${uid}:${chatId}`
+            try{ const last = localStorage.getItem(attemptKey); if(last && Date.now() - parseInt(last,10) < 5*60*1000){ setLoadError("Bu sohbet sunucuda yok — yerel kopyan duruyor. Yeni mesaj yazarsan geri yüklenecek."); return } }catch{}
             let cached:any=null
             try{ const raw=localStorage.getItem(chatKey(uid,chatId)); if(raw) cached=JSON.parse(raw)}catch{}
             if(!cached){ try{ const perRaw=localStorage.getItem(chatsKey(uid)); const arr=perRaw?JSON.parse(perRaw):[]; cached=arr.find((c:any)=>c.id===chatId)}catch{} }
             if(cached && cached.userId===uid){
-              setLoadError("♻️ Sohbet sunucuda kaybolmuş — aynı linkle geri yükleniyor…")
+              setLoadError("♻️ Sohbet sunucuda kaybolmuş — yerel yedekten tek seferde geri yükleniyor…")
+              try{ localStorage.setItem(attemptKey, String(Date.now())) }catch{}
               const r2=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:cached.title||"Geri yüklenen", restoreId:chatId}),credentials:"include"})
               if(r2.ok){
-                // mesajları da geri yükle
-                try{ const msgsRaw=localStorage.getItem(msgsKey(uid,chatId)); const msgs=msgsRaw?JSON.parse(msgsRaw):[]; for(const m of msgs.slice(0,40)){ if(m.sender==="user"&&m.content) await fetch(`/api/chat/${chatId}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:m.content}),credentials:"include"}).catch(()=>{}) } }catch{}
-                setTimeout(()=>load(), 600)
+                // mesajları tek seferde bulk restore (LLM çağırmadan, token yakmaz)
+                try{
+                  const msgsRaw=localStorage.getItem(msgsKey(uid,chatId)); const msgs=msgsRaw?JSON.parse(msgsRaw):[]
+                  if(msgs.length){
+                    // sadece ilk 60 mesaj, tek istek
+                    await fetch(`/api/chat/${chatId}/restore`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages: msgs.slice(0,60)}),credentials:"include"}).catch(()=>{})
+                  }
+                }catch{}
+                setTimeout(()=>load(), 700)
                 return
+              } else {
+                // oluşturamadıysa yerel mesajları direkt göster (gidip gelme olmasın)
+                try{
+                  const msgsRaw=localStorage.getItem(msgsKey(uid,chatId)); const msgs=msgsRaw?JSON.parse(msgsRaw):[]
+                  if(msgs.length){ setChat(cached); setMessages(msgs); setLoadError("⚠️ Sunucuda yok ama yerel kopyan gösteriliyor — yeni mesajla senkron olacak."); return }
+                }catch{}
               }
             }
-            // silinmiş mi kontrol (tombstone) — geri yükleme yapma
-            try{ const dRaw=localStorage.getItem(`sucuk:deleted:${uid}`); const del=dRaw?JSON.parse(dRaw):[]; if(del.includes(chatId)){ setLoadError("Bu sohbet silindi — tamamen kaldırıldı."); return } }catch{}
           }
         }catch{}
         // Vercel cold-start için senkron retry (sadece server listesinde varsa)
@@ -102,7 +118,8 @@ export default function ChatPage() {
     }catch(e:any){ setLoadError("Bağlantı hatası: "+e.message)}
   }
 
-  useEffect(()=>{ load(); const id=setInterval(async()=>{ if(sending) return; try{ const r=await fetch(`/api/chat/${chatId}`,{credentials:"include"}); if(!r.ok) return; const d=await r.json(); setChat(d.chat); setMessages(prev=> prev.length===d.messages?.length ? prev : d.messages??[])}catch{}},15000); return()=>clearInterval(id)},[chatId, sending])
+  const sendingRef = useRef(false)
+  useEffect(()=>{ load(); const id=setInterval(async()=>{ if(sendingRef.current) return; try{ const r=await fetch(`/api/chat/${chatId}`,{credentials:"include"}); if(!r.ok) return; const d=await r.json(); setChat(d.chat); const serverLen = (d.messages??[]).length; setMessages(prev=> serverLen > prev.length ? d.messages : prev)}catch{}},15000); return()=>clearInterval(id)},[chatId])
   useEffect(()=>{ try{ const sp=new URLSearchParams(window.location.search); const f=sp.get("fullscreen"); if(f==="1"||f===null) setIsFullscreen(true); if(f==="0") setIsFullscreen(false)}catch{}},[])
   useEffect(()=>{ const onKey=(e:KeyboardEvent)=>{ if(e.key==="Escape"&&isFullscreen) setIsFullscreen(false)}; window.addEventListener("keydown",onKey); return()=>window.removeEventListener("keydown",onKey)},[isFullscreen])
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth", block:"end"}) },[messages, typingId])
@@ -147,12 +164,17 @@ export default function ChatPage() {
 
   async function handleSubmit(e:React.FormEvent){
     e.preventDefault()
-    if((!input.trim()&&!attachedFile)||sending) return
+    if((!input.trim()&&!attachedFile)||sending || sendingRef.current) return
+    // 800ms debounce — çift tık token yakmayı kes
+    const now = Date.now()
+    const lastSend = (window as any).__lastSendAt || 0
+    if(now - lastSend < 800) return
+    ;(window as any).__lastSendAt = now
     let contentToSend=input
     if(attachedFile) contentToSend+=`\n[Dosya: ${attachedFile.name} - ${attachedFile.type}]\n${attachedFile.dataUrl.slice(0,8000)}`
     const userMsg={id:"tmp-"+Date.now(), sender:"user" as const, content: input + (attachedFile?` 📎 ${attachedFile.name}`:""), createdAt:new Date().toISOString()}
     setMessages(m=>[...m, userMsg])
-    setSending(true)
+    setSending(true); sendingRef.current = true
     const plan=planComplexTask(input)
     if(plan) setStatus(`🧩 Çoklu görev: ${plan.task} — ${plan.steps.length} adım`)
     else setStatus("Agent rota çiziyor…")
@@ -177,7 +199,7 @@ export default function ChatPage() {
         fetch("/api/drive/auto",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chatId}),credentials:"include"}).catch(()=>{})
       }
     }catch(err:any){ setMessages(m=>[...m,{id:"err2-"+Date.now(), sender:"assistant", content:`Bağlantı hatası: ${err?.message||String(err)}`, createdAt:new Date().toISOString()} as any])}
-    finally{ setSending(false); setTimeout(()=>setStatus(null),4000)}
+    finally{ setSending(false); sendingRef.current = false; setTimeout(()=>setStatus(null),4000)}
   }
 
   const providerLabel=(p:string|null)=> ({google:"Google",openai:"OpenAI",groq:"Groq",grok:"Grok",openrouter:"OpenRouter",deepseek:"DeepSeek",kimi:"KIMI",nvidia:"Nvidia",huggingface:"HuggingFace","web-search":"Web Arama"} as any)[p||""] || p || "—"

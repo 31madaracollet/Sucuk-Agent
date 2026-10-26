@@ -59,18 +59,20 @@ export default function DashboardPage() {
           localStorage.setItem(perKey, JSON.stringify(final))
           for(const c of final){ try{ localStorage.setItem(chatKey(uid,c.id), JSON.stringify(c)) }catch{} }
         }catch{}
-        // Vercel ephemeral kayıp: server sıfır ama local doluysa, eksikleri restore et (aynı id ile)
+        // Vercel ephemeral kayıp: server sıfır ama local doluysa, eksikleri tek tek restore et — ama TOKEN YAKMAMAK için bulk (LLM yok)
         try{
           const missing = finalMerged.filter((c:any)=> !serverChats.find((s:any)=>s.id===c.id))
-          for(const m of missing.slice(0,8)){
+          for(const m of missing.slice(0,4)){
+            const attemptKey = `sucuk:restore-attempt:${uid}:${m.id}`
+            try{ const last = localStorage.getItem(attemptKey); if(last && Date.now() - parseInt(last,10) < 10*60*1000) continue }catch{}
+            try{ localStorage.setItem(attemptKey, String(Date.now())) }catch{}
             await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:m.title, restoreId:m.id}),credentials:"include"}).catch(()=>{})
-            // mesajları da geri yükle
             try{
               const msgsRaw=localStorage.getItem(msgsKey(uid,m.id)); const msgs=msgsRaw?JSON.parse(msgsRaw):[]
-              for(const msg of msgs.slice(0,50)){
-                if(msg.sender==="user" && msg.content) await fetch(`/api/chat/${m.id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({content:msg.content}),credentials:"include"}).catch(()=>{})
-              }
+              if(msgs.length) await fetch(`/api/chat/${m.id}/restore`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages: msgs.slice(0,60)}),credentials:"include"}).catch(()=>{})
             }catch{}
+            // arada 200ms bekle — sunucuyu boğma
+            await new Promise(r=> setTimeout(r, 200))
           }
         }catch{}
       }catch{ setChats(serverChats) }

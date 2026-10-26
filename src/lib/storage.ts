@@ -535,6 +535,53 @@ export async function addMessage(
   return m
 }
 
+export async function bulkRestoreMessages(chatId: string, userId: string, messages: Array<{id?:string, sender: "user"|"assistant", content:string, provider?:string, model?:string, createdAt?:string}>): Promise<number> {
+  try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
+  // yetki kontrol
+  const chat = await getChat(chatId, userId)
+  if (!chat) throw new Error("Sohbet bulunamadı")
+  // mevcut mesaj sayısını kontrol et — zaten doluysa tekrar ekleme (token yakmayı önle)
+  const existing = await listMessages(chatId)
+  if (existing.length >= messages.length && existing.length > 0) return 0
+  // sadece eksik olanları ekle, tek seferde
+  let added = 0
+  for (const msg of messages) {
+    if (!msg.content || typeof msg.content !== "string") continue
+    if (msg.content.length > 8000) continue
+    // duplicate kontrol — aynı content + sender zaten varsa atla
+    if (existing.some(e => e.content === msg.content && e.sender === msg.sender)) continue
+    const m: any = {
+      id: msg.id || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      chatId,
+      sender: msg.sender,
+      content: msg.content,
+      provider: msg.provider || null,
+      model: msg.model || null,
+      createdAt: msg.createdAt || new Date().toISOString(),
+    }
+    if (isSupabaseConfigured && supabaseAdmin) {
+      const dbRow = toDbMessage(m)
+      const { error } = await supabaseAdmin.from("messages").insert([dbRow])
+      if (!error) added++
+    } else {
+      const arr = demo.messages.get(chatId) ?? []
+      // id duplicate önle
+      if (arr.some(a=> a.id === m.id)) continue
+      arr.push(m)
+      demo.messages.set(chatId, arr)
+      added++
+    }
+  }
+  if (added>0 && !isSupabaseConfigured) try{ saveDemoStore() }catch{}
+  if (added>0 && isSupabaseConfigured && supabaseAdmin) {
+    await supabaseAdmin.from("chats").update({ updated_at: now() }).eq("id", chatId)
+  } else if (added>0) {
+    const c = demo.chats.get(chatId)
+    if (c) { c.updatedAt = now(); demo.chats.set(chatId, c); try{ saveDemoStore() }catch{} }
+  }
+  return added
+}
+
 export async function deleteMessage(chatId: string, messageId: string, userId: string): Promise<boolean> {
   try{ if(!isSupabaseConfigured) loadDemoStore() }catch{}
   // Sadece kendi mesajını silebilir (veya admin)
