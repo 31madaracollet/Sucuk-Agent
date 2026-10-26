@@ -118,8 +118,23 @@ export function getSessionCookie(): string | undefined {
   }
 }
 
+function getTokenFromHeaders(): string | undefined {
+  try {
+    // next/headers headers() — her istekte x-sucuk-token veya Authorization header'i
+    const h = (require("next/headers") as any).headers()
+    const cand = h.get("x-sucuk-token") || h.get("x-sucuk-session") || h.get("X-Sucuk-Token") || h.get("authorization") || h.get("Authorization")
+    if (cand) {
+      const v = cand.replace(/^Bearer\s+/i, "").trim()
+      if (v) return v
+    }
+  } catch {}
+  return undefined
+}
+
 export function getCurrentUser(): SessionUser | null {
-  const token = getSessionCookie()
+  // per-tab header oncelikli — iki ayri oturum ayni tarayicida karismasin, cookie yedek
+  let token = getTokenFromHeaders()
+  if (!token) token = getSessionCookie()
   if (!token) return null
   return validateSession(token)
 }
@@ -128,9 +143,15 @@ export function isAdmin(user: SessionUser | null): boolean {
   return Boolean(user && user.role === "admin")
 }
 
-export function getCurrentUserFromRequest(req: { cookies: { get: (name: string) => { value: string } | undefined } }): SessionUser | null {
+export function getCurrentUserFromRequest(req: { cookies: { get: (name: string) => { value: string } | undefined }, headers?: { get: (name: string) => string | null | undefined } }): SessionUser | null {
   try {
-    const token = req.cookies.get(SESSION_NAME)?.value
+    let token: string | undefined
+    if ((req as any).headers) {
+      const h = (req as any).headers
+      token = h.get("x-sucuk-token") || h.get("x-sucuk-session") || h.get("authorization")?.replace(/^Bearer\s+/i, "") || h.get("Authorization")?.replace(/^Bearer\s+/i, "")
+      if (token) token = token.trim()
+    }
+    if (!token) token = req.cookies.get(SESSION_NAME)?.value
     if (!token) return null
     return validateSession(token)
   } catch { return null }

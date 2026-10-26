@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Navbar } from "@/components/layout/navbar"
 
-type Tab = "friends" | "notifs" | "projects" | "drive"
+type Tab = "friends" | "notifs" | "drive"
 export default function FriendsPage(){
   const [tab,setTab]=useState<Tab>("friends")
   const [friendships,setFriendships]=useState<any[]>([])
@@ -24,6 +24,7 @@ export default function FriendsPage(){
   const [inviteUser,setInviteUser]=useState("")
   const [inviteProjectId,setInviteProjectId]=useState("")
   const [loading,setLoading]=useState(true)
+  const [me,setMe]=useState<any>(null)
   const fileInputRef=useRef<HTMLInputElement|null>(null)
   const [recording,setRecording]=useState(false)
   const [sttRecording,setSttRecording]=useState(false)
@@ -113,7 +114,8 @@ export default function FriendsPage(){
       setProjects(arr)
     }catch{}
   }
-  async function loadAll(){ await Promise.all([loadFriends(),loadNotifs(),loadProjects()]); setLoading(false) }
+  async function loadMe(){ try{ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) setMe(j.user)}catch{} }
+  async function loadAll(){ await Promise.all([loadFriends(),loadNotifs(),loadProjects(),loadMe()]); setLoading(false) }
   useEffect(()=>{loadAll()},[])
   useEffect(()=>{ if(otherId) loadFriends()},[otherId])
   useEffect(()=>{ const p=new URLSearchParams(window.location.search); const dm=p.get("dm"); if(dm) setOtherId(dm)},[])
@@ -214,11 +216,10 @@ export default function FriendsPage(){
             </div>
 
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {(["friends","notifs","projects","drive"] as Tab[]).map(t=>(
+              {(["friends","notifs","drive"] as Tab[]).map(t=>(
                 <button key={t} onClick={()=>setTab(t)} className={`rounded-full px-4 py-2 text-sm font-medium border whitespace-nowrap transition ${tab===t ? "bg-[var(--ink)] text-[var(--canvas)] border-[var(--ink)]" : "bg-[var(--surface)] text-[var(--muted)] border-[var(--hairline)] hover:border-[var(--hairline)] hover:text-[var(--ink)]"}`}>
-                  {t==="friends" && `Arkadaşlar (${accepted.length})`}
+                  {t==="friends" && `Arkadaslar (${accepted.length})`}
                   {t==="notifs" && `Bildirimler ${unread?`(${unread})`:""}`}
-                  {t==="projects" && `Projeler (${projects.length})`}
                   {t==="drive" && "Drive Yedek"}
                 </button>
               ))}
@@ -278,8 +279,11 @@ export default function FriendsPage(){
                             const inferByName = m.content ? (/\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(m.content) ? "image" : /\.(mp4|webm|mov|avi)$/i.test(m.content) ? "video" : /\.(mp3|wav|ogg|m4a|webm)$/i.test(m.content) ? "audio" : null) : null
                             const mt = rawType || inferByUrl || inferByName
                             const hasMedia = !!rawUrl
+                            const isMe = m.senderId !== otherId
+                            const senderName = isMe ? (me?.username ? `${me.username} (Sen)` : "Sen") : otherName
                             return (
-                            <div key={m.id} className={`flex group ${m.senderId===otherId ? "justify-start" : "justify-end"}`}>
+                            <div key={m.id} className={`flex flex-col group ${m.senderId===otherId ? "items-start" : "items-end"}`}>
+                              <span className={`text-[10px] font-semibold px-1 mb-1 ${isMe ? "text-[var(--ink)] opacity-70" : "text-[var(--muted)]"}`}>{senderName}</span>
                               <div className={`max-w-[75%] rounded-[16px] px-3 py-2 text-sm ${m.senderId===otherId ? "bg-[var(--surface)] border border-[var(--hairline)] text-[var(--ink)]" : "bg-[var(--ink)] text-[var(--canvas)]"}`}>
                                 {hasMedia && mt==="image" && <a href={rawUrl} target="_blank" rel="noopener noreferrer" className="block"><img src={rawUrl} alt={m.content || "resim"} className="max-w-[220px] rounded-[10px] mb-2 cursor-pointer hover:opacity-90" onClick={e=>{ /* mobilde direkt aç */ }} /></a>}
                                 {hasMedia && mt==="video" && <video src={rawUrl} controls playsInline className="max-w-[260px] rounded-[10px] mb-2 cursor-pointer" onClick={e=> (e.target as HTMLVideoElement).paused ? (e.target as HTMLVideoElement).play() : null } />}
@@ -329,32 +333,7 @@ export default function FriendsPage(){
               </div>
             )}
 
-            {tab==="projects" && (
-              <div className="space-y-4">
-                <div className="card-claude p-5">
-                  <h3 className="font-medium flex items-center gap-2"><Layers className="h-4 w-4"/> Proje oluştur</h3>
-                  <div className="mt-3 space-y-2">
-                    <Input placeholder="Proje adı" value={projName} onChange={e=>setProjName(e.target.value)} className="bg-[var(--surface)] border-[var(--hairline)]"/>
-                    <Textarea placeholder="Açıklama" value={projDesc} onChange={e=>setProjDesc(e.target.value)} rows={2} className="bg-[var(--surface)] border-[var(--hairline)]"/>
-                    <Input placeholder="Davet: kullanıcı adları virgülle" value={projInvites} onChange={e=>setProjInvites(e.target.value)} className="bg-[var(--surface)] border-[var(--hairline)]"/>
-                    <Button onClick={createProject} className="btn-coral">Oluştur ve davet et</Button>
-                  </div>
-                </div>
-                <div className="card-claude p-5">
-                  <h3 className="font-medium">Projelerim</h3>
-                  {projects.length===0 ? <p className="text-sm text-[var(--muted)] mt-2">Henüz proje yok.</p> : projects.map(p=>(
-                    <div key={p.id} className="mt-3 rounded-[12px] border border-[var(--hairline)] bg-[var(--canvas-soft)] p-3">
-                      <p className="text-sm font-medium">{p.name}</p><p className="text-xs text-[var(--muted)]">{p.description} • {new Date(p.createdAt).toLocaleString("tr-TR")}</p>
-                    </div>
-                  ))}
-                  <div className="mt-4 flex gap-2">
-                    <Input placeholder="Proje ID" value={inviteProjectId} onChange={e=>setInviteProjectId(e.target.value)} className="bg-[var(--surface)] border-[var(--hairline)]"/>
-                    <Input placeholder="Davet kullanıcı adı" value={inviteUser} onChange={e=>setInviteUser(e.target.value)} className="bg-[var(--surface)] border-[var(--hairline)]"/>
-                    <Button onClick={inviteToProj} className="btn-coral">Davet et</Button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* ortak projeler kaldirildi — karisma yapiyordu, artik sadece kisisel sohbet/DM */}
 
             {tab==="drive" && (
               <div className="card-claude p-6">

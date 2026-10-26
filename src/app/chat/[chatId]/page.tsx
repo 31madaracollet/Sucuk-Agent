@@ -38,7 +38,9 @@ export default function ChatPage() {
   function chatsKey(uid:string){ return `sucuk:chats:${uid}` }
   function chatKey(uid:string,cid:string){ return `sucuk:chat:${uid}:${cid}` }
   function msgsKey(uid:string,cid:string){ return `sucuk:msgs:${uid}:${cid}` }
-  async function getUid():Promise<string|null>{ try{ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) return j.user.id }catch{}; return null }
+  const [meUser, setMeUser] = useState<any>(null)
+  async function getUid():Promise<string|null>{ try{ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) { setMeUser(j.user); return j.user.id } }catch{}; return null }
+  useEffect(()=>{ getUid() },[])
 
   async function load(){
     try{
@@ -359,12 +361,13 @@ export default function ChatPage() {
                   {messages.map((msg)=>(
                     <div key={msg.id} className={`flex gap-3 ${msg.sender==="user" ? "justify-end" : "justify-start"}`}>
                       {msg.sender==="user" ? (
-                        <div className="max-w-[88%] sm:max-w-[82%] group">
+                        <div className="max-w-[88%] sm:max-w-[82%] group flex flex-col items-end">
+                          {meUser?.username && <span className="text-[11px] font-semibold text-[var(--muted)] mb-1 mr-1">{meUser.username}</span>}
                           <div className="rounded-[16px] rounded-br-[4px] bg-[var(--ink)] text-[var(--canvas)] px-4 py-3 text-[15px] leading-[1.6] shadow-sm relative">
                             {renderMessageContent(msg.content, msg.id)}
                             <button onClick={()=>deleteMsg(msg.id)} className="absolute -top-2 -right-2 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white shadow"><Trash2 className="h-3 w-3"/></button>
                           </div>
-                          <p className="mt-1 text-right text-[11px] text-[var(--muted)]">{new Date(msg.createdAt).toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})} • Sen</p>
+                          <p className="mt-1 text-right text-[11px] text-[var(--muted)]">{new Date(msg.createdAt).toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})} • {meUser?.username ? `${meUser.username} (Sen)` : "Sen"}</p>
                         </div>
                       ) : (
                         <div className="flex gap-3 max-w-[92%]">
