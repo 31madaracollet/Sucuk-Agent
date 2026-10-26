@@ -76,7 +76,7 @@ export default function WorkspacePage() {
                 <a href="/api/auth/github" className="inline-flex items-center gap-2 rounded-[8px] bg-[#24292f] text-white px-4 py-2 text-sm font-medium hover:bg-black"><Github className="h-4 w-4"/> GitHub Gerçek Bağla</a>
                 <a href="/api/auth/google?type=all" className="inline-flex items-center gap-2 rounded-[8px] bg-[#4285F4] text-white px-4 py-2 text-sm font-medium hover:bg-[#357ae8]"><HardDrive className="h-4 w-4"/> Google Gerçek Bağla (Drive + Takvim)</a>
                 <Button onClick={autoConnectGoogle} disabled={googleConnecting} variant="outline" className="border-[var(--hairline)] bg-[var(--surface)]">{googleConnecting ? "Bağlanıyor…" : "🔗 Hızlı Dümenden Bağla"}</Button>
-                <Button variant="outline" className="rounded-[8px] border-[var(--hairline)] bg-[var(--surface)]" onClick={()=>window.open("/friends","_blank")}><ExternalLink className="h-4 w-4"/> Arkadaşlarla Proje</Button>
+
               </div>
               <div className="mt-3 rounded-[10px] border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
                 <b>Per-user kalıcı bağlama aktif:</b> GitHub / Google bağladığında token <code className="bg-white px-1 rounded">{userName || "senin hesabın"}</code> ID'sine (<code className="bg-white px-1 rounded">{userId || "id"}</code>) kaydedilir — başka kullanıcı göremez, logout/girişte kaybolmaz. Vercel file-store + Supabase varsa DB'ye de yazılır. Env’de <code>GITHUB_TOKEN</code> / <code>GOOGLE_CLIENT_ID</code> yoksa bile gömülü placeholder ile “Bağlı” görünür; gerçek OAuth için 1 dk kurulum aşağıda.<br/>

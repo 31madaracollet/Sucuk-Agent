@@ -37,7 +37,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const isLogin = path === "/login" || path.startsWith("/login/")
       const isPublic = path === "/" || path.startsWith("/_next") || path.includes(".")
       const token = sessionStorage.getItem("sucuk_session_tab")
-      const protectedPaths = ["/dashboard", "/chat", "/settings", "/admin", "/friends", "/editor", "/workspace"]
+      const protectedPaths = ["/dashboard", "/chat", "/settings", "/admin", "/editor", "/workspace"]
       const isProtected = protectedPaths.some(p => path === p || path.startsWith(p + "/"))
       if (!token && isProtected) {
         window.location.href = "/login"
