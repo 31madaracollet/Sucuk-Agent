@@ -7,7 +7,8 @@ export type ProviderId =
   | "deepseek"
   | "kimi"
   | "nvidia"
-  | "huggingface";
+  | "huggingface"
+  | "pollinations";
 
 export interface ProviderKey {
   provider: ProviderId;
@@ -79,11 +80,14 @@ export interface DynamicTool {
   createdAt: string;
 }
 
+import type { ModelTask } from "@/lib/providers";
+
 export interface RouteDecision {
   agent: "code" | "image" | "search" | "reasoning" | "text" | "chat";
   provider: ProviderId;
   model: string;
   reason: string;
+  task: ModelTask;
 }
 
 

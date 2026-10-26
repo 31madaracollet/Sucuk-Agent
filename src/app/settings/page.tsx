@@ -1,6 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
-import { Database, Shield, HardDrive, Plug, Palette, Trash2, Download, Sun, Moon, Layers, Cpu } from "lucide-react"
+import { Database, Shield, HardDrive, Plug, Palette, Trash2, Download, Sun, Moon, Layers, Cpu, Zap, Check, AlertCircle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Navbar } from "@/components/layout/navbar"
@@ -8,14 +8,14 @@ import { INTEGRATIONS } from "@/lib/integrations"
 import { useTheme } from "@/components/theme-provider"
 
 const MODEL_TASKS: Record<string,string> = {
-  google: "Genel/Çeviri/Döküman — Gemini 3.8 Flash (Görev 1+2)",
-  groq: "Kod & Arama — GPT-OSS 120B/20B",
-  openrouter: "Kod — Claude Sonnet 5.5",
-  huggingface: "Görsel — FLUX.1-schnell + Qwen-Image (her prompt İngilizceye çevrilir) + No logo",
-  deepseek: "Ağır mantık — Reasoner (Görev 3)",
-  kimi: "Kod uzun bağlam — Moonshot",
-  nvidia: "Ağır mantık yedeği — Nemotron 5 anahtar (Görev 3)",
-  openai: "Yazı/Döküman/Slayt — GPT-4o (Görev 2: Gemini/OpenAI)",
+  google: "Çeviri + Doküman/Slayt birincil — Gemini (3 anahtar, kotası biterse sıradaki Google key → KIMI)",
+  groq: "Arama birincil — GPT-OSS 120B/20B (3 anahtar rotasyon → Google/OpenRouter yedek)",
+  openrouter: "Kod yedeği — Claude Sonnet 5.5 (3 anahtar)",
+  huggingface: "Görsel birincil — FLUX.1-schnell (5 anahtar, kotası biterse sıradaki HF key) + Qwen-Image",
+  deepseek: "Ağır mantık birincil — Reasoner (3 anahtar → NVIDIA 5 anahtar yedek)",
+  kimi: "Çeviri yedek + Kod uzun bağlam — Moonshot 8K/32K (3 anahtar)",
+  nvidia: "Ağır mantık yedeği — Nemotron 49B/70B (5 anahtar, DeepSeek biterse devreye girer)",
+  openai: "Kod birincil + Doküman yedeği — GPT-4o/mini (3 anahtar → DeepSeek/NVIDIA yedek)",
 }
 
 export default function SettingsPage(){
@@ -43,7 +43,27 @@ export default function SettingsPage(){
           <div className="mx-auto max-w-[900px] px-6 md:px-8 py-8 space-y-6">
             <div>
               <h1 className="font-display text-[28px] tracking-[-0.6px]">Ayarlar</h1>
-              <p className="text-sm text-[var(--muted)]">Kalıcı sohbet, tema, entegrasyonlar, sağlayıcı sağlığı — Claude design system ile</p>
+              <p className="text-sm text-[var(--muted)]">Kalıcı sohbet, tema, görev dağılımı, sağlayıcı sağlığı — kota bitince sıradaki API devralır</p>
+            </div>
+
+            <div className="card-claude p-6">
+              <h3 className="font-medium flex items-center gap-2"><Zap className="h-4 w-4 text-[var(--coral)]"/> Görev Dağılımı — her API ayrı iş (yeni)</h3>
+              <p className="text-xs text-[var(--muted)] mt-1">Birin kotası bitince öbür API otomatik devralır. Her provider 3-5 anahtar rotasyonu ile çalışır. Aşağıda birincil + yedek zinciri.</p>
+              {loading ? <p className="text-sm text-[var(--muted)] mt-4">Yükleniyor…</p> : providers?.taskDistribution ? (
+                <div className="mt-4 space-y-2">
+                  {Object.entries(providers.taskDistribution as any).map(([task, dist]: any)=>(
+                    <div key={task} className="rounded-[12px] border border-[var(--hairline)] bg-[var(--canvas-soft)] p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium capitalize flex items-center gap-2"><Cpu className="h-3 w-3 text-[var(--coral)]"/> {task} → <span className="text-[var(--coral)]">{dist.primary}</span></p>
+                        <span className="text-xs text-[var(--muted)]">{dist.fallbacks.length} yedek</span>
+                      </div>
+                      <p className="text-xs text-[var(--muted)] mt-1">{dist.desc}</p>
+                      <p className="text-xs mt-2 font-mono bg-[var(--surface)] border border-[var(--hairline)] rounded-[8px] px-2 py-1.5">{dist.primary} → {dist.fallbacks.join(" → ")}</p>
+                    </div>
+                  ))}
+                  <p className="text-xs text-[var(--muted)] mt-2">Örnek: <b>kod</b> → openai kotası 429 verirse deepseek dener, o da doluysa nvidia, sonra groq… Görsel sadece huggingface 5 anahtar içinde döner.</p>
+                </div>
+              ) : <p className="text-sm text-[var(--muted)]">Veri yok</p>}
             </div>
 
             <div className="card-claude p-6">
@@ -70,21 +90,29 @@ export default function SettingsPage(){
             </div>
 
             <div className="card-claude p-6">
-              <h3 className="font-medium flex items-center gap-2"><Database className="h-4 w-4 text-[var(--coral)]"/> Sağlayıcı durumu — 3× anahtar, yedek beleş</h3>
-              <p className="text-xs text-[var(--muted)] mt-1">Kota bitince sessizce yedeğe geçer. HF/NVIDIA 5 anahtar desteği.</p>
+              <h3 className="font-medium flex items-center gap-2"><Database className="h-4 w-4 text-[var(--coral)]"/> Sağlayıcı durumu — 3-5× anahtar, kota bitince sıradaki devreye girer</h3>
+              <p className="text-xs text-[var(--muted)] mt-1">Her sağlayıcı kendi anahtarları içinde döner, bitince görev zincirinde sıradaki provider devralır. HF/NVIDIA 5 anahtar.</p>
               {loading ? <p className="text-sm text-[var(--muted)] mt-4">Yükleniyor…</p> : providers ? (
                 <div className="mt-4 space-y-3">
                   <div className="flex items-center justify-between rounded-[10px] border border-[var(--hairline)] bg-[var(--canvas-soft)] px-4 py-3 text-sm">
                     <span className="text-[var(--muted)]">Kimlik</span>
                     <span className={`rounded-full px-3 py-1 text-xs font-bold ${providers.authenticated ? "bg-[var(--ink)] text-[var(--canvas)]" : "bg-red-100 text-red-700"}`}>{providers.authenticated ? "Oturum açık" : "Oturum yok"}</span>
                   </div>
-                  {Object.entries(providers.keyCounts||{}).map(([p,c])=>(
-                    <div key={p} className="flex items-center justify-between rounded-[12px] border border-[var(--hairline)] bg-[var(--surface)] p-4">
-                      <div><p className="text-sm font-medium capitalize">{p}</p><p className="text-xs text-[var(--muted)]">{MODEL_TASKS[p]||""}</p></div>
-                      <span className="rounded-full bg-[var(--ink)] text-[var(--canvas)] px-3 py-1 text-xs font-mono font-bold">{String(c)} anahtar</span>
+                  {Object.entries(providers.keyCounts||{}).map(([p,c])=> {
+                    const health = providers.keyHealth?.[p]
+                    return (
+                    <div key={p} className="rounded-[12px] border border-[var(--hairline)] bg-[var(--surface)] p-4">
+                      <div className="flex items-center justify-between">
+                        <div><p className="text-sm font-medium capitalize">{p}</p><p className="text-xs text-[var(--muted)]">{MODEL_TASKS[p]||""}</p></div>
+                        <span className="rounded-full bg-[var(--ink)] text-[var(--canvas)] px-3 py-1 text-xs font-mono font-bold">{String(c)} anahtar</span>
+                      </div>
+                      {health && <p className="text-xs text-[var(--muted)] mt-1">Sağlıklı: {health.healthy}/{health.total} {health.exhausted.length>0 && <span className="text-red-600">• kota biten: {health.exhausted.join(", ")}</span>}</p>}
                     </div>
-                  ))}
+                  )})}
                   {Object.keys(providers.keyCounts||{}).length===0 && <p className="text-sm text-[var(--muted)]">Anahtar yok — Vercel env’e ekle.</p>}
+                  <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                    <b>Nasıl çalışır?</b> Örn. <code className="bg-white px-1 rounded">kod</code> → openai (key1→key2→key3) dener, hepsi 429 ise deepseek’e geçer, o da doluysa nvidia (5 key)… En son hata verirse Ayarlar’da teşhis görünür.
+                  </div>
                 </div>
               ) : <p className="text-sm text-[var(--muted)]">Veri alınamadı.</p>}
             </div>

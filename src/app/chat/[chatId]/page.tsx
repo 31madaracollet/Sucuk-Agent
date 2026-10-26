@@ -102,21 +102,20 @@ export default function ChatPage() {
     }catch(e:any){ setLoadError("Bağlantı hatası: "+e.message)}
   }
 
-  useEffect(()=>{ load(); const id=setInterval(async()=>{ try{ const r=await fetch(`/api/chat/${chatId}`,{credentials:"include"}); if(!r.ok) return; const d=await r.json(); setChat(d.chat); setMessages(d.messages??[])}catch{}},7000); return()=>clearInterval(id)},[chatId])
+  useEffect(()=>{ load(); const id=setInterval(async()=>{ if(sending) return; try{ const r=await fetch(`/api/chat/${chatId}`,{credentials:"include"}); if(!r.ok) return; const d=await r.json(); setChat(d.chat); setMessages(prev=> prev.length===d.messages?.length ? prev : d.messages??[])}catch{}},15000); return()=>clearInterval(id)},[chatId, sending])
   useEffect(()=>{ try{ const sp=new URLSearchParams(window.location.search); const f=sp.get("fullscreen"); if(f==="1"||f===null) setIsFullscreen(true); if(f==="0") setIsFullscreen(false)}catch{}},[])
   useEffect(()=>{ const onKey=(e:KeyboardEvent)=>{ if(e.key==="Escape"&&isFullscreen) setIsFullscreen(false)}; window.addEventListener("keydown",onKey); return()=>window.removeEventListener("keydown",onKey)},[isFullscreen])
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth", block:"end"}) },[messages, typingId])
   // localStorage sync — per-user, silinince tamamen gider
   useEffect(()=>{ (async()=>{ try{ if(chatId && messages.length){ const uid=await getUid(); if(uid) localStorage.setItem(msgsKey(uid,chatId), JSON.stringify(messages)) } }catch{} })() },[messages, chatId])
 
-  // typewriter — Claude fade, not harsh
+  // direkt ver — tane tane değil
   useEffect(()=>{
     if(!typingId) return
     const full=messages.find(m=>m.id===typingId)?.content||""
     if(!full) return
-    let i=0
-    const timer=setInterval(()=>{ i+=4; setTypedContent(p=>({...p,[typingId]: full.slice(0,i)})); if(i>=full.length){ clearInterval(timer); setTypingId(null)}},16)
-    return()=>clearInterval(timer)
+    setTypedContent(p=>({...p,[typingId]: full}))
+    setTypingId(null)
   },[typingId, messages])
 
   const handleFileChange=(e:React.ChangeEvent<HTMLInputElement>)=>{
@@ -156,7 +155,7 @@ export default function ChatPage() {
     setSending(true)
     const plan=planComplexTask(input)
     if(plan) setStatus(`🧩 Çoklu görev: ${plan.task} — ${plan.steps.length} adım`)
-    else setStatus("Agent rota çiziyor… görsel→FLUX, kod→GPT-OSS 120B, akıl→Reasoner")
+    else setStatus("Agent rota çiziyor…")
     setLimitExhausted(false)
     const bodyMsg=contentToSend
     setInput(""); setAttachedFile(null)
@@ -166,7 +165,7 @@ export default function ChatPage() {
       if(!res.ok){ setMessages(m=>[...m,{id:"err-"+Date.now(), sender:"assistant", content:`Hata: ${data.error||"Bilinmeyen hata."}`, createdAt:new Date().toISOString()} as any])}
       else{
         setUsedProvider(data.usedProvider??null); setUsedModel(data.usedModel??null); setLastDecision(data.decision??null); setLimitExhausted(Boolean(data.limitExhausted))
-        setStatus(data.limitExhausted ? "Limit doldu — yedek beleşe geçildi" : null)
+        setStatus(data.limitExhausted ? "bekle kardeş token lazım 1dk bekle" : null)
         if(data.toolOutput) setMessages(m=>[...m,{id:"tool-"+Date.now(), sender:"assistant", content:`🔎 Web Arama:\n${data.toolOutput}`, provider:"web-search", createdAt:new Date().toISOString()}])
         const newId="asst-"+Date.now()
         const asst={id:newId, sender:"assistant" as const, content: data.assistant, provider:data.usedProvider, model:data.usedModel, createdAt:new Date().toISOString()}
@@ -199,7 +198,7 @@ export default function ChatPage() {
     }
     const mdImgRegex=/!\[.*?\]\(([^)]+)\)/g
     const mdMatch=Array.from(display.matchAll(mdImgRegex)).find(m=>m[1].startsWith("data:image/") || m[1].match(/^https?:\/\//))
-    if(mdMatch){ const url=mdMatch[1]; const before=display.slice(0, mdMatch.index!); const after=display.slice(mdMatch.index!+mdMatch[0].length); return <><p className="whitespace-pre-wrap break-words leading-[1.7]">{before.trim()}</p><img src={url} alt="generated" className="mt-3 max-w-full rounded-[12px] border border-[var(--hairline)]" onError={e=>{(e.target as HTMLImageElement).style.display="none"}} />{after&&<p className="mt-3 whitespace-pre-wrap break-words text-[var(--ink-soft)]">{after.trim()}</p>}</>}
+    if(mdMatch){ const url=mdMatch[1]; const before=display.slice(0, mdMatch.index!); const after=display.slice(mdMatch.index!+mdMatch[0].length); return <><p className="whitespace-pre-wrap break-words leading-[1.7]">{before.trim()}</p><div className="mt-3 group/img relative"><img src={url} alt="generated" className="max-w-full rounded-[12px] border border-[var(--hairline)]" onError={e=>{(e.target as HTMLImageElement).style.display="none"}} /><a href={url} download={`sucuk-${Date.now()}.png`} className="mt-2 inline-flex items-center gap-1 rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-3 py-1 text-xs hover:bg-[var(--surface-cream)]"><Download className="h-3 w-3"/> İndir</a></div>{after&&<p className="mt-3 whitespace-pre-wrap break-words text-[var(--ink-soft)]">{after.trim()}</p>}</>}
     const httpImg=display.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|webp)/i)
     if(httpImg) return <><span className="whitespace-pre-wrap break-words leading-[1.7]">{display}</span><img src={httpImg[0]} alt="stock" className="mt-3 max-w-full rounded-[12px] border border-[var(--hairline)]" /></>
     return <span className="whitespace-pre-wrap break-words leading-[1.7]">{display}</span>
@@ -259,15 +258,15 @@ export default function ChatPage() {
                 <div className="min-w-0">
                   <p className="font-display text-[16px] leading-none truncate">{chat?.title || "Sohbet"}</p>
                   <p className="text-xs text-[var(--muted)] truncate">
-                    {lastDecision ? <><span className="text-[var(--ink)] font-medium">{lastDecision.agent}</span> • {providerLabel(usedProvider)} • {usedModel}</> : usedProvider ? `${providerLabel(usedProvider)} • ${usedModel}` : "Hazır — beleş öncelikli"}
+                    {lastDecision ? <span className="text-[var(--ink)] font-medium">{lastDecision.agent}</span> : "Hazır"}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <button onClick={()=>setIsFullscreen(v=>!v)} className="hidden sm:flex items-center gap-1.5 rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface-cream)]">{isFullscreen ? <><Minimize2 className="h-3 w-3"/> Küçült</> : <><Maximize2 className="h-3 w-3"/> Tam ekran</>}</button>
-                <button onClick={()=>router.push("/dashboard")} className="rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-3 py-1.5 text-xs hover:bg-[var(--surface-cream)]">← Geri</button>
+              <div className="flex items-center gap-1 sm:gap-1.5">
+                <button onClick={()=>setIsFullscreen(v=>!v)} className="hidden sm:flex items-center gap-1.5 rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-2 sm:px-3 py-1.5 text-xs font-medium hover:bg-[var(--surface-cream)]">{isFullscreen ? <><Minimize2 className="h-3 w-3"/> Küçült</> : <><Maximize2 className="h-3 w-3"/> Tam ekran</>}</button>
+                <button onClick={()=>router.push("/dashboard")} className="rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs hover:bg-[var(--surface-cream)]">← Geri</button>
                 <button onClick={()=>setShowArtifact(v=>!v)} className={`hidden lg:flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border ${showArtifact ? "bg-[var(--ink)] text-[var(--canvas)] border-transparent" : "bg-[var(--surface)] border-[var(--hairline)] hover:bg-[var(--surface-cream)]"}`}><PanelRight className="h-3 w-3"/> {showArtifact ? "Artifact gizle" : "Artifact"}</button>
-                <span className="hidden sm:flex items-center gap-1 rounded-full bg-[var(--ink)] text-[var(--canvas)] px-3 py-1.5 text-xs font-bold"><Sparkles className="h-3 w-3"/> Agent</span>
+                <span className="hidden sm:flex items-center gap-1 rounded-full bg-[var(--ink)] text-[var(--canvas)] px-2.5 sm:px-3 py-1.5 text-xs font-bold"><Sparkles className="h-3 w-3"/> Agent</span>
               </div>
             </div>
           </div>
@@ -287,18 +286,18 @@ export default function ChatPage() {
           {/* Main split — chat left, artifact right */}
           <div className="flex flex-1 min-h-0">
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
-              <div className="flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-[740px] px-4 md:px-6 py-8 space-y-6">
+              <div className="flex-1 overflow-y-auto overscroll-contain">
+                <div className="mx-auto max-w-[740px] px-3 sm:px-4 md:px-6 py-4 sm:py-6 md:py-8 space-y-4 sm:space-y-6">
                   {messages.length===0 && (
                     <div className="text-center py-10">
                       <div className="mx-auto h-12 w-12 rounded-[14px] bg-[var(--ink)] text-[var(--canvas)] grid place-items-center mb-4"><Sparkles className="h-6 w-6"/></div>
                       <h3 className="font-display text-[22px]">Nasıl yardımcı olayım?</h3>
                       <p className="mt-2 text-sm text-[var(--muted)] max-w-[560px] mx-auto">Warm paper gündüz, OLED gece. Kod, görsel, arama — artifact sağda canlı.</p>
-                      <div className="mt-6 grid grid-cols-2 gap-3 max-w-[560px] mx-auto text-left">
-                        <button onClick={()=>setInput("Python ile modern todo uygulaması yaz, artifact'te göster")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><Code2 className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Kod yaz</p><p className="text-xs text-[var(--muted)]">GPT-OSS 120B → artifact</p></button>
-                        <button onClick={()=>setInput("Güncel yapay zeka haberlerini ara ve özetle")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><Search className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Web’de ara</p><p className="text-xs text-[var(--muted)]">Groq + DuckDuckGo</p></button>
-                        <button onClick={()=>setInput("Uzay temalı bir köpek çiz, poster gibi olsun")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><ImageIcon className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Köpek çiz</p><p className="text-xs text-[var(--muted)]">FLUX.1 → artifact</p></button>
-                        <button onClick={()=>setInput("Satış sitesi hazırla: ürün fotoğrafları ve kodları ile tam paket")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><FileText className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Satış sitesi</p><p className="text-xs text-[var(--muted)]">Orchestrator</p></button>
+                      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 max-w-[560px] mx-auto text-left">
+                        <button onClick={()=>setInput("Python ile modern todo uygulaması yaz, artifact'te göster")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><Code2 className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Kod yaz</p><p className="text-xs text-[var(--muted)]">Anında kod</p></button>
+                        <button onClick={()=>setInput("Güncel yapay zeka haberlerini ara ve özetle")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><Search className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Web’de ara</p><p className="text-xs text-[var(--muted)]">Ara ve özetle</p></button>
+                        <button onClick={()=>setInput("Uzay temalı bir köpek çiz, poster gibi olsun")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><ImageIcon className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Köpek çiz</p><p className="text-xs text-[var(--muted)]">Hızlı görsel</p></button>
+                        <button onClick={()=>setInput("Satış sitesi hazırla: ürün fotoğrafları ve kodları ile tam paket")} className="card-claude p-4 hover:border-[var(--coral)] text-left"><FileText className="h-4 w-4 mb-2"/><p className="text-sm font-medium">Satış sitesi</p><p className="text-xs text-[var(--muted)]">Tam paket</p></button>
                       </div>
                     </div>
                   )}
@@ -306,7 +305,7 @@ export default function ChatPage() {
                   {messages.map((msg)=>(
                     <div key={msg.id} className={`flex gap-3 ${msg.sender==="user" ? "justify-end" : "justify-start"}`}>
                       {msg.sender==="user" ? (
-                        <div className="max-w-[82%] group">
+                        <div className="max-w-[88%] sm:max-w-[82%] group">
                           <div className="rounded-[16px] rounded-br-[4px] bg-[var(--ink)] text-[var(--canvas)] px-4 py-3 text-[15px] leading-[1.6] shadow-sm relative">
                             {renderMessageContent(msg.content, msg.id)}
                             <button onClick={()=>deleteMsg(msg.id)} className="absolute -top-2 -right-2 hidden group-hover:flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white shadow"><Trash2 className="h-3 w-3"/></button>
@@ -322,7 +321,8 @@ export default function ChatPage() {
                               {typingId===msg.id && <span className="inline-block w-[2px] h-4 bg-[var(--coral)] ml-1 animate-pulse align-middle"/>}
                             </div>
                             <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted)]">
-                              <span>{msg.provider ? providerLabel(msg.provider) : "Asistan"} {msg.model ? `• ${msg.model}` : ""} • {new Date(msg.createdAt).toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})}</span>
+                              <span>{new Date(msg.createdAt).toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})} • Asistan</span>
+                              <button onClick={async()=>{ await navigator.clipboard.writeText(msg.content); setStatus("Kopyalandı"); setTimeout(()=>setStatus(null),1500)}} className="inline-flex items-center gap-1 rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-2.5 py-1 hover:bg-[var(--surface-cream)]"><Copy className="h-3 w-3"/> Kopyala</button>
                               <button onClick={()=>downloadPDF(msg.content, `sucuk-${msg.id}`)} className="inline-flex items-center gap-1 rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-2.5 py-1 hover:bg-[var(--surface-cream)]"><Download className="h-3 w-3"/> PDF</button>
                             </div>
                           </div>
@@ -346,8 +346,8 @@ export default function ChatPage() {
                 </div>
               )}
 
-              <div className="sticky bottom-0 border-t border-[var(--hairline)] bg-[var(--canvas)]">
-                <div className="mx-auto max-w-[740px] px-4 py-3">
+              <div className="sticky bottom-0 border-t border-[var(--hairline)] bg-[var(--canvas)] pb-[env(safe-area-inset-bottom)]">
+                <div className="mx-auto max-w-[740px] px-2 sm:px-4 py-2 sm:py-3">
                   <input ref={fileInputRef} type="file" accept="image/*,video/*,audio/*,.pdf,.txt" className="hidden" onChange={handleFileChange}/>
                   <form onSubmit={handleSubmit} className="flex items-end gap-2 rounded-[16px] border border-[var(--hairline)] bg-[var(--surface)] p-2 shadow-[0_1px_8px_rgba(0,0,0,0.06)] focus-within:border-[var(--coral)] focus-within:ring-2 focus-within:ring-[var(--coral)]/10">
                     <button type="button" onClick={()=>fileInputRef.current?.click()} className="h-10 w-10 shrink-0 rounded-[10px] bg-[var(--canvas-soft)] border border-[var(--hairline)] grid place-items-center hover:bg-[var(--surface-cream)]"><Paperclip className="h-4 w-4 text-[var(--muted)]"/></button>

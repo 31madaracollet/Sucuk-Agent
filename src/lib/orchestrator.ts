@@ -1,12 +1,23 @@
 /* ------------------------------------------------------------------ */
 /*  Orkestratör Yönlendirici — Akıllı görev ataması                  */
 /*  Her mesaja bir görev verilir ve beleş modellere öncelik verilir  */
+/*  Her sağlayıcı ayrı görev: kota bitince sıradaki API devralır     */
 /* ------------------------------------------------------------------ */
 
 import type { ProviderId, RouteDecision } from "@/types"
+import type { ModelTask } from "@/lib/providers"
+import { TASK_DISTRIBUTION } from "@/lib/providers"
 
 function hasAny(m: string, arr: string[]) {
   return arr.some((k) => m.includes(k))
+}
+
+function dailySeed(){ return new Date().toISOString().slice(0,10) }
+function pickRotated<T>(pool: T[], seed: string): T {
+  const s = dailySeed()+':'+seed
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return pool[h % pool.length]
 }
 
 export function routeRequest(message: string): RouteDecision {
@@ -18,17 +29,21 @@ export function routeRequest(message: string): RouteDecision {
     "afis", "karikatur", "illustration", "canva", "kopek", "kedi", "ejderha",
     "uzay", "manzara", "karakter", "avatar", "wallpaper", "thumbnail",
     "gorselini", "resmini", "cizmeni",
+    // İnsan — doğrudan tetikle (şehir yerine insan)
+    "insan", "adam", "kadin", "kadın", "erkek", "cocuk", "çocuk", "kisi", "kişi",
+    "portre", "selfie", "yuz", "yüz", "face", "human", "person",
   ]
   if (hasAny(m, imageKeywords)) {
     return {
       agent: "image",
-      provider: "huggingface",
-      model: "black-forest-labs/FLUX.1-schnell",
-      reason: "Görsel üretim — FLUX.1 Schnell (beleş, hızlı) ile çiziliyor. Örn: 'köpek çiz' → Hugging Face",
+      provider: "pollinations",
+      model: "flux",
+      reason: "Görsel üretimi",
+      task: "gorsel",
     }
   }
 
-  // Kod
+  // Kod — OpenAI birincil, DeepSeek/NVIDIA/Groq yedek (her biri ayrı anahtar seti)
   const codeKeywords = [
     "kod", "kodla", "yazilim", "program", "python", "javascript", "typescript",
     "react", "next.js", "nextjs", "html", "css", "sql", "api", "fonksiyon",
@@ -36,107 +51,117 @@ export function routeRequest(message: string): RouteDecision {
     "supabase", "vercel", "node", "npm", "component", "hook",
   ]
   if (hasAny(m, codeKeywords)) {
-    const beleş: Array<{provider: ProviderId, model: string}> = [
+    // Görev dağılımı: openai → deepseek → nvidia → groq → openrouter → kimi → huggingface → google
+    const pool: Array<{ provider: ProviderId; model: string }> = [
       { provider: "deepseek", model: "deepseek-chat" },
+      { provider: "deepseek", model: "deepseek-reasoner" },
       { provider: "kimi", model: "moonshot-v1-8k" },
-      { provider: "openrouter", model: "anthropic/claude-sonnet-5.5" },
+      { provider: "kimi", model: "moonshot-v1-32k" },
       { provider: "nvidia", model: "nvidia/llama-3.3-nemotron-super-49b-v1" },
-      { provider: "google", model: "gemini-3.8-flash" },
-      { provider: "huggingface", model: "Qwen/Qwen2.5-Coder-7B-Instruct" },
+      { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct" },
+      { provider: "groq", model: "openai/gpt-oss-120b" },
+      { provider: "openai", model: "gpt-4o-mini" },
+      { provider: "openrouter", model: "anthropic/claude-sonnet-5.5" },
     ]
-    let h=0; for(let i=0;i<m.length;i++) h=(h*31 + m.charCodeAt(i))>>>0
-    const pick=beleş[h % beleş.length]
+    const pick = pickRotated(pool, m)
     return {
       agent: "code",
       provider: pick.provider,
       model: pick.model,
-      reason: `Kod görevi — ${pick.provider} / ${pick.model} seçildi (beleş rotasyonu). Yedek: diğer beleşler`,
+      reason: `Kod üretimi`,
+      task: "kod",
     }
   }
 
-  // Yazı / Döküman / Slayt hazırlama — Gemini + OpenAI (kullanıcı isteği)
+  // Yazı / Döküman / Slayt — Google birincil, OpenAI yedek
   const docKeywords = [
     "dokuman", "döküman", "belge", "yazi", "yazı", "makale", "rapor", "odev", "ödev",
     "slayt", "sunum", "presentation", "slide", "google docs", "docs", "word", "pdf hazirla",
     "icerik yaz", "metin yaz", "blog", "kompozisyon", "ozet cikar", "duzenle"
   ]
   if (hasAny(m, docKeywords)) {
-    const docModels: Array<{provider: ProviderId, model: string}> = [
+    const pool: Array<{ provider: ProviderId; model: string }> = [
       { provider: "google", model: "gemini-3.8-flash" },
       { provider: "openai", model: "gpt-4o-mini" },
       { provider: "openai", model: "gpt-4o" },
       { provider: "google", model: "gemini-3.8-flash-lite" },
     ]
-    let h=0; for(let i=0;i<m.length;i++) h=(h*31 + m.charCodeAt(i))>>>0
-    const pick = docModels[h % docModels.length]
+    const pick = pickRotated(pool, m)
     return {
       agent: "text",
       provider: pick.provider,
       model: pick.model,
-      reason: `Döküman/Slayt — ${pick.provider} / ${pick.model} (yazı+Google Docs/Slides, kalıcı bağlantı)`,
+      reason: `Döküman`,
+      task: "dokuman",
     }
   }
 
-  // Akıl / ağır mantık — DeepSeek + NVIDIA (kullanıcı isteği)
+  // Akıl / ağır mantık — DeepSeek birincil, NVIDIA yedek (Görev 3)
   const reasoningKeywords = [
     "dusunu", "dusun", "mantik", "hesapla", "problem", "coz", "analiz",
     "adim adim", "step by step", "neden", "nicin", "kanitla", "acikla",
     "matematik", "fizik", "kimya", "muhtemel", "olasilik", "agir mantik", "zor soru",
   ]
   if (hasAny(m, reasoningKeywords) && m.length > 20) {
-    // DeepSeek ve NVIDIA dönüşümlü — ağır mantık
-    const heavy: Array<{provider: ProviderId, model: string}> = [
+    const pool: Array<{ provider: ProviderId; model: string }> = [
       { provider: "deepseek", model: "deepseek-reasoner" },
       { provider: "nvidia", model: "nvidia/llama-3.3-nemotron-super-49b-v1" },
       { provider: "nvidia", model: "nvidia/llama-3.1-nemotron-70b-instruct" },
       { provider: "deepseek", model: "deepseek-chat" },
     ]
-    let h=0; for(let i=0;i<m.length;i++) h=(h*31 + m.charCodeAt(i))>>>0
-    const pick = heavy[h % heavy.length]
+    const pick = pickRotated(pool, m)
     return {
       agent: "reasoning",
       provider: pick.provider,
       model: pick.model,
-      reason: `Ağır mantık — ${pick.provider} / ${pick.model} (deepseek & nvidia rotasyonu)`,
+      reason: `Mantık`,
+      task: "akıl",
     }
   }
 
-  // Arama / güncel
+  // Arama / güncel — Groq birincil, Google/OpenRouter yedek
   const searchKeywords = [
     "ara", "arastir", "guncel", "haber", "fiyat", "bugun", "2025", "2026",
     "nedir", "kimdir", "nerede", "nasil alinir", "hava durumu", "doviz",
     "borsa", "son dakika", "gundem",
   ]
-  // Araştırma — Groq burada olabilir (kullanıcı onay verdi)
   if (hasAny(m, searchKeywords) || m.startsWith("ara ") || m.includes(" web ")) {
-    const picks: Array<{provider: ProviderId, model: string}> = [
+    const pool: Array<{ provider: ProviderId; model: string }> = [
       { provider: "groq", model: "openai/gpt-oss-120b" },
       { provider: "groq", model: "openai/gpt-oss-20b" },
       { provider: "google", model: "gemini-3.8-flash" },
       { provider: "openrouter", model: "meta-llama/llama-3.3-70b-instruct:free" },
     ]
-    let h=0; for(let i=0;i<m.length;i++) h=(h*31 + m.charCodeAt(i))>>>0
-    const pk=picks[h % picks.length]
+    const pick = pickRotated(pool, m)
     return {
       agent: "search",
-      provider: pk.provider,
-      model: pk.model,
-      reason: `Web arama — ${pk.provider} + DuckDuckGo (rotasyon)`,
+      provider: pick.provider,
+      model: pick.model,
+      reason: `Arama`,
+      task: "arama",
     }
   }
 
-  // Çeviri — her ne derse desin çevirsin (Görev 1)
+  // Çeviri — Google birincil, KIMI/OpenAI yedek
   if (hasAny(m, ["cevir", "translate", "tercume", "çevir", "ingilizceye", "turkceye", "ozetle", "ozet", "kisa ozet"])) {
+    const pool: Array<{ provider: ProviderId; model: string }> = [
+      { provider: "google", model: "gemini-3.8-flash" },
+      { provider: "kimi", model: "moonshot-v1-8k" },
+      { provider: "google", model: "gemini-3.8-flash-lite" },
+      { provider: "openai", model: "gpt-4o-mini" },
+    ]
+    const pick = pickRotated(pool, m)
     return {
       agent: "text",
-      provider: "google",
-      model: "gemini-3.8-flash",
-      reason: "Çeviri — Gemini 3.8 Flash (görev 1: her prompt İngilizceye çevrilir, resimde de aktif)",
+      provider: pick.provider,
+      model: pick.model,
+      reason: `Çeviri`,
+      task: "çeviri",
     }
   }
 
-  // Genel sohbet — kod/söz için Groq yok, araştırma için Groq var
-  const genel: Array<{provider: ProviderId, model: string}> = [
+  // Genel sohbet — Google birincil, diğerleri yedek
+  const genel: Array<{ provider: ProviderId; model: string }> = [
     { provider: "google", model: "gemini-3.8-flash" },
     { provider: "kimi", model: "moonshot-v1-8k" },
     { provider: "openrouter", model: "anthropic/claude-sonnet-5.5" },
@@ -144,24 +169,25 @@ export function routeRequest(message: string): RouteDecision {
     { provider: "deepseek", model: "deepseek-chat" },
     { provider: "huggingface", model: "Qwen/Qwen2.5-7B-Instruct" },
   ]
-  let hh=0; for(let i=0;i<m.length;i++) hh=(hh*31 + m.charCodeAt(i))>>>0
-  const g=genel[hh % genel.length]
+  const g = pickRotated(genel, m)
   return {
     agent: "text",
     provider: g.provider,
     model: g.model,
-    reason: `Genel sohbet — ${g.provider} / ${g.model} (rotasyon, beleş)`,
+    reason: `Genel sohbet`,
+    task: g.provider === "google" ? "genel" : "genel",
   }
 }
 
 // UI'da gösterilecek görev açıklamaları
-export const TASK_INFO: Record<string, { label: string; provider: ProviderId; model: string }> = {
-  genel: { label: "Genel Sohbet", provider: "groq", model: "openai/gpt-oss-20b" },
-  kod: { label: "Kod Yazma", provider: "groq", model: "openai/gpt-oss-120b" },
-  gorsel: { label: "Görsel Üretim", provider: "huggingface", model: "black-forest-labs/FLUX.1-schnell" },
-  akıl: { label: "Derin Düşünme", provider: "deepseek", model: "deepseek-reasoner" },
-  arama: { label: "Web Arama", provider: "groq", model: "openai/gpt-oss-120b" },
-  çeviri: { label: "Çeviri/Özet", provider: "google", model: "gemini-3.8-flash" },
+export const TASK_INFO: Record<string, { label: string; provider: ProviderId; model: string; task?: ModelTask }> = {
+  genel: { label: "Genel Sohbet", provider: "google", model: "gemini-3.8-flash", task: "genel" },
+  kod: { label: "Kod Yazma", provider: "openai", model: "gpt-4o-mini", task: "kod" },
+  gorsel: { label: "Görsel Üretim", provider: "huggingface", model: "black-forest-labs/FLUX.1-schnell", task: "gorsel" },
+  akıl: { label: "Derin Düşünme", provider: "deepseek", model: "deepseek-reasoner", task: "akıl" },
+  arama: { label: "Web Arama", provider: "groq", model: "openai/gpt-oss-120b", task: "arama" },
+  çeviri: { label: "Çeviri/Özet", provider: "google", model: "gemini-3.8-flash", task: "çeviri" },
+  dokuman: { label: "Döküman/Slayt", provider: "google", model: "gemini-3.8-flash", task: "dokuman" },
 }
 
 /* Çoklu Görev Modüler Orchestration — örn. Satış sitesi */
@@ -175,7 +201,6 @@ export interface OrchestrationPlan {
 
 export function planComplexTask(prompt: string): OrchestrationPlan | null {
   const m = prompt.toLowerCase()
-  // Satış / e-ticaret / alışveriş sitesi tetikleyicileri
   if(m.includes("satış") || m.includes("satis") || m.includes("e-ticaret") || m.includes("eticaret") || m.includes("alışveriş") || m.includes("shop") || m.includes("store")) {
     return {
       task: "Satış ve Alışveriş Sitesi",

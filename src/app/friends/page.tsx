@@ -29,19 +29,73 @@ export default function FriendsPage(){
   const [sttRecording,setSttRecording]=useState(false)
   const mediaRecorderRef=useRef<MediaRecorder|null>(null)
 
+  function lsKey(k:string){ return `sucuk:${k}` }
+  async function getUidLS():Promise<string|null>{ try{ const r=await fetch("/api/auth/me",{credentials:"include"}); const j=await r.json(); if(j.authenticated) return j.user.id }catch{} return null }
   async function loadFriends(){
-    const fRes=await fetch("/api/friends",{credentials:"include"}); const fData=await fRes.json(); setFriendships(fData.friendships?? fData.friends?? [])
-    if(otherId){ const mRes=await fetch(`/api/messages?otherId=${otherId}`,{credentials:"include"}); const mData=await mRes.json(); setDms(mData.messages??[]) }
+    try{
+      const fRes=await fetch("/api/friends",{credentials:"include"}); const fData=await fRes.json(); let arr=fData.friendships?? fData.friends?? []
+      const uid=await getUidLS()
+      if(uid){
+        try{
+          if(arr.length) localStorage.setItem(lsKey(`friends:${uid}`), JSON.stringify(arr))
+          else { const cached=localStorage.getItem(lsKey(`friends:${uid}`)); if(cached) arr=JSON.parse(cached) }
+        }catch{}
+      }
+      setFriendships(arr)
+    }catch{}
+    if(otherId){
+      try{
+        const mRes=await fetch(`/api/messages?otherId=${otherId}`,{credentials:"include"}); const mData=await mRes.json(); let marr=mData.messages??[]
+        const uid=await getUidLS()
+        if(uid){
+          const dk=lsKey(`dm:${uid}:${otherId}`)
+          try{
+            if(marr.length) localStorage.setItem(dk, JSON.stringify(marr))
+            else { const cached=localStorage.getItem(dk); if(cached) marr=JSON.parse(cached) }
+          }catch{}
+        }
+        setDms(marr)
+      }catch{}
+    }
   }
-  async function loadNotifs(){ const r=await fetch("/api/notifications",{credentials:"include"}); const j=await r.json(); setNotifications(j.notifications??[]) }
-  async function loadProjects(){ const r=await fetch("/api/projects",{credentials:"include"}); const j=await r.json(); setProjects(j.projects??[]) }
+  async function loadNotifs(){ try{ const r=await fetch("/api/notifications",{credentials:"include"}); const j=await r.json(); setNotifications(j.notifications??[]) }catch{} }
+  async function loadProjects(){
+    try{
+      const r=await fetch("/api/projects",{credentials:"include"}); const j=await r.json(); let arr=j.projects??[]
+      const uid=await getUidLS()
+      if(uid){
+        try{
+          if(arr.length) localStorage.setItem(lsKey(`projects:${uid}`), JSON.stringify(arr))
+          else { const cached=localStorage.getItem(lsKey(`projects:${uid}`)); if(cached) arr=JSON.parse(cached) }
+        }catch{}
+      }
+      setProjects(arr)
+    }catch{}
+  }
   async function loadAll(){ await Promise.all([loadFriends(),loadNotifs(),loadProjects()]); setLoading(false) }
   useEffect(()=>{loadAll()},[])
   useEffect(()=>{ if(otherId) loadFriends()},[otherId])
   useEffect(()=>{ const p=new URLSearchParams(window.location.search); const dm=p.get("dm"); if(dm) setOtherId(dm)},[])
 
   async function addFriend(){ if(!addId.trim()) return; const r=await fetch("/api/friends",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({friendId:addId.trim(), friendUsername:addId.trim()}),credentials:"include"}); const j=await r.json(); if(!r.ok) alert(j.error||"Eklenemedi"); else { setAddId(""); loadFriends(); loadNotifs(); } }
-  async function sendMessage(){ if(!newMessage.trim()||!otherId) return; await fetch("/api/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({receiverId:otherId,content:newMessage}),credentials:"include"}); setNewMessage(""); loadFriends() }
+  async function sendMessage(){
+    if(!newMessage.trim()||!otherId) return
+    const contentToSend=newMessage
+    try{ await fetch("/api/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({receiverId:otherId,content:contentToSend}),credentials:"include"}) }catch{}
+    // local fallback — iki taraf da görsün, server ephemeral olsa bile
+    try{
+      const uid=await getUidLS()
+      if(uid){
+        const mine={ id:`tmp-${Date.now()}`, senderId:uid, receiverId:otherId, content:contentToSend, createdAt:new Date().toISOString(), read:false, mediaUrl:null, mediaType:null }
+        setDms(prev=>[...prev, mine])
+        try{
+          const dk=lsKey(`dm:${uid}:${otherId}`); const cur=JSON.parse(localStorage.getItem(dk)||"[]"); cur.push(mine); localStorage.setItem(dk, JSON.stringify(cur))
+          const dk2=lsKey(`dm:${otherId}:${uid}`); const cur2=JSON.parse(localStorage.getItem(dk2)||"[]"); cur2.push(mine); localStorage.setItem(dk2, JSON.stringify(cur2))
+        }catch{}
+      }
+    }catch{}
+    setNewMessage(""); loadFriends()
+  }
   async function sendMedia(file:File){ if(!otherId) return; const fd=new FormData(); fd.append("file",file); fd.append("receiverId",otherId); fd.append("content",newMessage); const res=await fetch("/api/media/upload",{method:"POST",body:fd,credentials:"include"}); if(res.ok){ setNewMessage(""); loadFriends()} else alert("Medya gönderilemedi") }
 
   const startRecording=async()=>{

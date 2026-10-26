@@ -128,3 +128,24 @@ html.dark .sidebar-paper {
   background: var(--surface);
   border-left: 1px solid var(--hairline-soft);
 }
+
+/* Responsive — mobil & dizüstü ebatlar */
+@media (max-width: 640px) {
+  .font-display { font-size: 1.05em; }
+  /* mobilde sidebar gizli, içerik tam genişlik */
+  html { font-size: 15px; }
+  /* iOS safe area */
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}
+@media (min-width: 641px) and (max-width: 1024px) {
+  /* dizüstü: dengeli */
+  html { font-size: 16px; }
+}
+@media (min-width: 1025px) {
+  html { font-size: 16px; }
+}
+/* viewport height fix for mobile browsers */
+@supports (height: 100dvh) {
+  .min-h-screen { min-height: 100dvh; }
+  .h-screen { height: 100dvh; }
+}

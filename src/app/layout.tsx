@@ -7,6 +7,13 @@ export const metadata: Metadata = {
   description: "Warm parchment gündüz, OLED cihaz gece. Orchestrator beleş modellere öncelik verir — kod→GPT-OSS 120B, görsel→FLUX, akıl→Reasoner. Supabase + Drive, arkadaşlar DM, Google oto-bağlama, artifact split.",
 }
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover" as const,
+}
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="tr" className="h-full" suppressHydrationWarning>

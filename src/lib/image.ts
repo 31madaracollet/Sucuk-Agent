@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------ */
-/*  Görsel Üretimi - Hugging Face (FLUX schnell) + Pollinations fallback */
-/*  HF: schnell 1-4 adımda ~2s, Apache2, Inference Providers en hızlı [2]  */
-/*  Pollinations: gen.pollinations.ai (eski image.pollinations.ai deprecated 1033) */
+/*  Görsel Üretimi - FLUX.1-schnell direkt (STOK YOK)                 */
+/*  HF 5 token + Pollinations birden paralel, tane tane değil         */
+/*  Kota bitince öbür key'e oto geç, stok bozduğu için kaldırıldı       */
 /* ------------------------------------------------------------------ */
 
 export interface ImageResult {
@@ -19,46 +19,59 @@ function friendlyHfError(status: number, body: string): string {
   if (status === 410 && b.includes("deprecated")) {
     return `410 Gone — model hf-inference'te yok. Ham: ${b}`
   }
-  if (status === 401) return `401 — token hatalı. Ham: ${b}`
+  if (status === 401) return `401 — token hatalı/eksik. Vercel → HUGGINGFACE_API_TOKEN ekle. Ham: ${b}`
   if (status === 429) return `429 Kota doldu — huggingface.co/settings/billing. Ham: ${b}`
+  if (status === 400 && b.includes("not supported by provider")) {
+    return `400 — model/provider uyumsuz (fal-ai desteklemiyor). Ham: ${b}`
+  }
   return `HF hata (${status}): ${b}`
 }
 
-import { sanitizeImagePrompt, getStockImageFallback } from "./prompt-guard"
+import { sanitizeImagePrompt, getStockImageFallback, isHumanPrompt } from "./prompt-guard"
 import { createProviderManager } from "./providers"
 
 // Çeviri AI → İngilizce (resim modeli hep İngilizce anlıyor, her prompt çevir)
 async function enhanceImagePrompt(raw: string): Promise<string> {
-  let en = raw
-  // Görev 1: çeviri – her ne derse desin resim promptu İngilizceye çevir
-  const shouldTranslate = true
-  if (shouldTranslate) {
-    try {
-      const m = createProviderManager()
-      const providers = m.availableProviders() as any[]
-      const order: Array<{p: any, mod: string}> = [
-        {p:"google", mod:"gemini-3.8-flash"},
-        {p:"groq", mod:"openai/gpt-oss-20b"},
-        {p:"openrouter", mod:"meta-llama/llama-3.3-70b-instruct:free"},
-      ].filter(x=> providers.includes(x.p))
-      for(const c of order){
-        try{
-          const controller = new AbortController()
-          const t = setTimeout(()=>controller.abort(), 2500)
-          const res = await m.chat(c.p, c.mod, [
-            {role:"system", content:"Translate Turkish image prompt to English vividly. Output ONLY English prompt."},
-            {role:"user", content: raw}
-          ], {temperature:0.3, maxTokens: 150})
-          clearTimeout(t)
-          if(res.text && res.text.length>4){ en=res.text.trim().replace(/^[\"']|[\"']$/g,""); break }
-        }catch{}
-      }
-    } catch {}
+  // Kullanıcı "Table" Çiz gibi tırnaklı yazınca temizle
+  let cleaned = raw.trim()
+    .replace(/^["'“”]+|["'“”]+$/g, "") // baştaki/sondaki tırnakları at
+    .replace(/\s+/g, " ")
+  if (cleaned.length < 2) cleaned = raw.trim()
+  let en = cleaned
+  // hız: çeviri sadece gerekirse, paralel race 1.1s
+  if (cleaned.length > 12) {
+    const nonAscii = (cleaned.match(/[^\x00-\x7F]/g) || []).length
+    if (nonAscii / cleaned.length >= 0.15) {
+      try {
+        const m = createProviderManager()
+        const providers = m.availableProviders() as any[]
+        const order: Array<{p: any, mod: string}> = [
+          {p:"groq", mod:"openai/gpt-oss-20b"},
+          {p:"google", mod:"gemini-3.8-flash"},
+        ].filter(x=> providers.includes(x.p))
+        if (order.length) {
+          const races = order.map(c =>
+            m.chat(c.p, c.mod, [
+              {role:"system", content:"Translate to vivid English for FLUX image model. Output ONLY English prompt."},
+              {role:"user", content: cleaned}
+            ], {temperature:0.3, maxTokens: 80}).then(r=>r.text).catch(()=>null)
+          )
+          const timeout = new Promise<null>(res=> setTimeout(()=>res(null), 1100))
+          const winner = await Promise.race([...races, timeout]) as string|null
+          if (winner && winner.length>4) en = winner.trim().replace(/^["'\u201c\u201d]+|["'\u201c\u201d]+$/g, "").replace(/\s+/g, " ")
+        }
+      } catch {}
+    } else {
+      en = cleaned
+    }
   }
-  // Stil: photorealistic ama kısa – hızlı token, logo yok
-  const styleSuffix = ", photorealistic, ultra detailed, sharp focus, 8k, cinematic, no watermark, no logo, no text"
-  if(en.toLowerCase().includes("photorealistic")) return en
-  // Türkçe prompt çok uzunsa kısalt (HF timeout engel)
+  // Harf yazmadan direkt görsel: no text/letters/words kesin
+  const styleSuffix = ", photorealistic, ultra detailed, sharp focus, 8k, cinematic, clean image, no text, no letters, no words, no typography, no writing, no captions, no labels, no watermark, no logo, no signature"
+  if(en.toLowerCase().includes("photorealistic")) {
+    // zaten photorealistic varsa da no-text ekle (harfleri tek tek yazmasın)
+    if(!en.toLowerCase().includes("no text")) en += ", no text, no letters, no words, no typography, no watermark, no logo"
+    return en
+  }
   if(en.length>400) en=en.slice(0,400)
   return en + styleSuffix
 }
@@ -74,119 +87,97 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms=12000): Promi
 
 export async function generateImage(prompt: string): Promise<ImageResult> {
   const original = prompt
+  // Stok kaldırıldı — direkt HF'e git, birden paralel
   prompt = await enhanceImagePrompt(prompt)
   const guard = sanitizeImagePrompt(prompt.length>600 ? original : prompt)
   if(!guard.allowed) return { ok:false, error: guard.reason || "Prompt reddedildi" }
   if(prompt.length < 10) prompt = guard.prompt
-  const token = process.env.HUGGINGFACE_API_TOKEN || process.env.HUGGINGFACE_API_TOKEN_2 || process.env.HUGGINGFACE_API_TOKEN_3
+  // Tüm HF tokenlerini dene
+  const tokens: string[] = [
+    process.env.HUGGINGFACE_API_TOKEN,
+    process.env.HUGGINGFACE_API_TOKEN_2,
+    process.env.HUGGINGFACE_API_TOKEN_3,
+    process.env.HUGGINGFACE_API_TOKEN_4,
+    process.env.HUGGINGFACE_API_TOKEN_5,
+  ].filter(Boolean) as string[]
+  const token = tokens[0] || ""
 
-  // Hızlı -> kaliteli sıralama (schnell 4 adım ~2s, dev ~10s)
-  const hfCandidates = token
+  // Tek model, tek key gibi davran ama kota bitince diğer 4 key'e geç — FLUX.1-schnell (hf-inference'te canlı, logosuz, hızlı)
+  const hfCandidates: Array<{model:string, bases:string[], steps?:number, guidance?:number}> = token
     ? [
-        "black-forest-labs/FLUX.1-schnell",          // en hızlı, Apache2, 1-4 step
-        "black-forest-labs/FLUX.1-dev",              // kalite yedeği
-        "Qwen/Qwen-Image",                           // photorealistic yeni
-        "stabilityai/stable-diffusion-3.5-large-turbo", // 4 step hızlı SD
+        { model: "black-forest-labs/FLUX.1-schnell", bases: ["https://api-inference.huggingface.co/models", "https://router.huggingface.co/hf-inference/models"], steps: 4, guidance: 0 },
       ]
     : []
 
-  // HF Inference Providers deneme – önce hf-inference, sonra fal-ai (hızlı)
-  const hfBases = [
-    "https://router.huggingface.co/hf-inference/models",
-    "https://router.huggingface.co/fal-ai",
-  ]
-
   let lastErr = ""
-  for (const model of hfCandidates) {
-    for (const base of hfBases) {
-      const url = `${base}/${model}`
-      try {
-        const res = await fetchWithTimeout(url, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-            "X-Wait-For-Model": "true",
-          },
-          body: JSON.stringify({ inputs: prompt, parameters: { guidance_scale: model.includes("schnell") ? 0 : 3.5, num_inference_steps: model.includes("schnell") ? 4 : undefined } }),
-        }, 13000)
 
-        if (!res.ok) {
-          const text = await res.text().catch(() => "")
-          lastErr = friendlyHfError(res.status, text) + ` | ${url}`
-          if (res.status === 403) { lastErr += " -> fallback"; break }
-          if (res.status === 503 && text.includes("loading")) {
-            await new Promise(r=>setTimeout(r, 1000))
-          }
-          continue
-        }
-
-        const ct = res.headers.get("content-type") ?? ""
-        if (ct.startsWith("image/")) {
-          const buf = Buffer.from(await res.arrayBuffer())
-          if(buf.length>1000) return { ok: true, buffer: buf, contentType: ct }
-        } else {
-          const text = await res.text()
-          // Bazı providerlar JSON döner: {"image": "base64..."} – handle
-          try {
-            const j = JSON.parse(text)
-            if(j.image){ const b = Buffer.from(j.image, "base64"); return { ok:true, buffer:b, contentType:"image/jpeg" } }
-          } catch {}
-          lastErr = `Beklenmeyen tip ${ct}: ${text.slice(0,300)} | ${url}`
-        }
-      } catch (err: any) {
-        lastErr = `HF hata: ${err?.name==="AbortError" ? "timeout" : (err?.message || err)} | ${model} @ ${base}`
-        continue
-      }
+  // ----- Pollinations birden paralel — kota bitince öbür key'e, key yoksa free de birden -----
+  const pollTokens: string[] = [
+    process.env.POLLINATIONS_API_KEY,
+    (process.env as any).POLLINATIONS_API_KEY_2,
+    (process.env as any).POLLINATIONS_API_KEY_3,
+  ].filter(Boolean) as string[]
+  {
+    const enc = encodeURIComponent(prompt.replace(/^["']|["']$/g,"").slice(0,400))
+    const pollJobs: Promise<Buffer|null>[] = []
+    const pollEncs = ["flux","turbo"]
+    // key'li birden
+    for (const tk of pollTokens) for (const pm of pollEncs) pollJobs.push((async()=>{
+      try{ const url=`https://gen.pollinations.ai/image/${enc}?model=${pm}&width=1024&height=1024&nologo=true&private=true&enhance=false`
+        const r=await fetchWithTimeout(url,{headers:{Accept:"image/*",Authorization:`Bearer ${tk}`}},15000)
+        if(!r.ok){ lastErr+=` | Pollinations ${pm} ${r.status}`; return null }
+        const ct=r.headers.get("content-type")||""; if(!ct.startsWith("image/")) return null
+        const b=Buffer.from(await r.arrayBuffer()); return b.length>1000?b:null
+      }catch(e:any){ lastErr+=` | Pollinations ${pm} ${e?.message}`; return null }
+    })())
+    // free de birden
+    for (const pm of pollEncs) pollJobs.push((async()=>{
+      try{ const url=`https://image.pollinations.ai/p/${enc}?model=${pm}&width=1024&height=1024&nologo=true&enhance=false`
+        const r=await fetchWithTimeout(url,{headers:{Accept:"image/*"}},12000)
+        if(!r.ok) return null
+        const b=Buffer.from(await r.arrayBuffer()); return b.length>1000?b:null
+      }catch{ return null }
+    })())
+    if (pollJobs.length){
+      const pr = await Promise.allSettled(pollJobs)
+      for(const r of pr) if(r.status==="fulfilled" && r.value) return { ok:true, buffer:r.value, contentType:"image/jpeg" }
     }
-    // model denendi, sırada Pollinations denenecek – ama önce diğer HF model denenmesin mi? 1 model yeterli
-    // schnell başarılı olursa zaten dönmüştü, değilse diğer model dene
-    if(lastErr.includes("403")) break
   }
 
-  // ----- FALLBACK: gen.pollinations.ai (yeni, hızlı, eski 1033/524 yok) -----
-  try {
-    const encoded = encodeURIComponent(prompt)
-    const pollUrls = [
-      `https://gen.pollinations.ai/image/${encoded}?model=flux&width=1024&height=1024&nologo=true&private=true&enhance=false`,
-      `https://gen.pollinations.ai/image/${encoded}?model=turbo&width=1024&height=1024&nologo=true&private=true`,
-    ]
-    for (const url of pollUrls) {
-      try {
-        const res = await fetchWithTimeout(url, { headers: { Accept: "image/*" } }, 15000)
-        if (!res.ok) {
-          lastErr += ` | Pollinations ${res.status}: ${await res.text().catch(()=> "")} | ${url}`
-          continue
-        }
-        const ct = res.headers.get("content-type") ?? "image/jpeg"
-        if (!ct.startsWith("image/")) {
-          lastErr += ` | Pollinations tip ${ct} | ${url}`
-          continue
-        }
-        const buf = Buffer.from(await res.arrayBuffer())
-        if (buf.length < 1000) { lastErr += ` | Pollinations boş | ${url}`; continue }
-        return { ok: true, buffer: buf, contentType: ct }
-      } catch (e: any) {
-        lastErr += ` | Pollinations ${e?.name==="AbortError" ? "timeout" : e?.message} | ${url}`
-        continue
+  // BİRDEN paralel — 5 HF token x 2 endpoint tane tane değil, hepsi aynı anda
+  async function tryHfOne(cand: typeof hfCandidates[number], base: string, tk: string, idx: number): Promise<Buffer|null> {
+    const url = `${base}/${cand.model}`
+    try {
+      const res = await fetchWithTimeout(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tk}`, "Content-Type": "application/json", "X-Wait-For-Model": "true" },
+        body: JSON.stringify({ inputs: prompt, parameters: { guidance_scale: cand.guidance ?? 3.5, num_inference_steps: cand.steps } }),
+      }, 15000)
+      if (!res.ok) {
+        const t = await res.text().catch(()=> "")
+        lastErr = friendlyHfError(res.status, t) + ` | ${url} [key#${idx+1}]`
+        return null
       }
-    }
-  } catch (e: any) {
-    lastErr += ` | Pollinations genel: ${e?.message}`
-  }
-
-  // Token bitti — stok görsel fallback
-  try {
-    const stockUrl = getStockImageFallback(prompt)
-    const res = await fetchWithTimeout(stockUrl, { headers: { Accept: "image/*" } }, 8000)
-    if (res.ok) {
-      const ct = res.headers.get("content-type") ?? "image/jpeg"
+      const ct = res.headers.get("content-type") ?? ""
       if (ct.startsWith("image/")) {
         const buf = Buffer.from(await res.arrayBuffer())
-        if (buf.length > 1000) return { ok: true, buffer: buf, contentType: ct }
+        if (buf.length > 1000) return buf
+      } else {
+        const t = await res.text()
+        try { const j = JSON.parse(t); if (j.image) { const b = Buffer.from(j.image,"base64"); if(b.length>1000) return b } } catch {}
       }
-    }
-  } catch {}
+    } catch(e:any){ lastErr = `HF hata: ${e?.name==="AbortError"?"timeout 15s":e?.message} | ${cand.model} [key#${idx+1}]` }
+    return null
+  }
+  if (hfCandidates.length && tokens.length) {
+    const all: Promise<Buffer|null>[] = []
+    for (const cand of hfCandidates) for (const base of cand.bases) tokens.forEach((tk,i)=> all.push(tryHfOne(cand,base,tk,i)))
+    const settled = await Promise.allSettled(all)
+    for (const r of settled) if (r.status==="fulfilled" && r.value) return { ok:true, buffer:r.value, contentType:"image/jpeg" }
+  }
 
-  return { ok: false, error: lastErr.slice(0,1500) || "Tüm görsel modelleri başarısız." }
+  // Stok kaldırıldı (bozuyor) — sadece HF + Pollinations birden
+
+  const hint = !token ? "HF token yok. Vercel → HUGGINGFACE_API_TOKEN ekleyin. " : ""
+  return { ok: false, error: (hint + lastErr).slice(0,1500) || "Tüm görsel modelleri başarısız (stok kaldırıldı)." }
 }
