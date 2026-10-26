@@ -7,7 +7,6 @@ import { useTheme } from "@/components/theme-provider"
 // Claude: nav SOLA yaslı, text-only, 14px/500, center değil — NNGroup %69 sola bakar
 const navItems = [
   { href: "/dashboard", label: "Sohbet", icon: MessageCircle },
-  { href: "/friends", label: "Arkadaşlar", icon: Users },
   { href: "/editor", label: "Kod", icon: Code2 },
   { href: "/workspace", label: "Workspace", icon: Layers },
   { href: "/settings", label: "Ayarlar", icon: Settings },
@@ -80,11 +79,9 @@ export function Navbar() {
           <div className="hidden lg:flex items-center gap-1">
             {navItems.map((it) => {
               const Icon = it.icon
-              const isFriends = it.href === "/friends"
               return (
                 <Link key={it.href} href={it.href} className="relative flex items-center gap-2 rounded-[8px] px-3 py-2 text-[14px] font-[500] text-[var(--muted)] hover:bg-[var(--surface-cream)] hover:text-[var(--ink)] transition">
                   <Icon className="h-4 w-4" /> {it.label}
-                  {isFriends && unread > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--coral)] text-[10px] font-bold text-white">{unread > 9 ? "9+" : unread}</span>}
                 </Link>
               )
             })}
@@ -102,10 +99,9 @@ export function Navbar() {
             {theme==="light" ? <Moon className="h-4 w-4"/> : <Sun className="h-4 w-4"/>}
           </button>
 
-          <Link href="/friends" className="relative hidden md:flex items-center gap-2 rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--muted)] hover:border-[var(--hairline)] hover:text-[var(--ink)]">
-            <Bell className="h-3.5 w-3.5" /> {unread > 0 ? `${unread} yeni` : "Bildirim"}
-            {unread > 0 && <span className="h-2 w-2 rounded-full bg-[var(--coral)]" />}
-          </Link>
+          <span className="relative hidden md:flex items-center gap-2 rounded-full border border-[var(--hairline)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--muted)]">
+            <Bell className="h-3.5 w-3.5" /> Bildirim
+          </span>
 
           <span className="hidden sm:flex items-center gap-2 rounded-full border border-[var(--hairline)] bg-[var(--surface)] pl-2 pr-1 py-1 text-xs">
             <span className="h-6 w-6 rounded-full bg-[var(--ink)] text-[var(--canvas)] grid place-items-center text-[10px] font-bold">{user.username[0]?.toUpperCase()}</span>
@@ -131,7 +127,6 @@ export function Navbar() {
               return (
                 <Link key={it.href} href={it.href} onClick={()=>setOpen(false)} className="flex items-center gap-3 rounded-[8px] px-3 py-3 text-sm font-medium text-[var(--ink)] hover:bg-[var(--surface-cream)]">
                   <Icon className="h-4 w-4"/> {it.label}
-                  {it.href==="/friends" && unread>0 && <span className="ml-auto rounded-full bg-[var(--coral)] px-2 py-0.5 text-xs text-white">{unread}</span>}
                 </Link>
               )
             })}
