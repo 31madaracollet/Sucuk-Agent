@@ -322,7 +322,8 @@ export class ProviderManager {
   markExhausted(provider: ProviderId, index: number) {
     const k = `${provider}:${index}`
     this.exhaustedKeys.add(k)
-    setTimeout(()=> this.exhaustedKeys.delete(k), 60_000)
+    // kısa TTL — 15sn sonra tekrar dene, kullanıcı beklemesin
+    setTimeout(()=> this.exhaustedKeys.delete(k), 15_000)
   }
 
   getKeyHealth(): Record<string, { total: number; healthy: number; exhausted: string[] }> {

@@ -16,7 +16,7 @@ import { getGithubToken, pushFileToRepo, parseRepoUrl, getSelectedRepo } from "@
 
 export const dynamic = "force-dynamic"
 
-const LIMIT_MSG = "bekle kardeş token lazım 1dk bekle"
+const LIMIT_MSG = "bekle kardeş token lazım 15sn bekle"
 
 const DEFAULT_MODEL_FOR_PROVIDER_FALLBACK: Record<ProviderId, string> = {
   groq: "openai/gpt-oss-20b",
@@ -43,16 +43,25 @@ async function tryProviders(
   messages: { role: string; content: string }[]
 ) {
   const attempts: Array<{ provider: string; model: string; error: string; status?: number }> = []
-  for (const t of targets) {
-    try {
-      const llm = await manager.chat(t.provider, t.model, messages, { temperature: 0.7, maxTokens: 2048 })
-      return { text: llm.text, provider: llm.provider, model: llm.model, attempts }
-    } catch (err: any) {
-      const msg = err?.message ?? String(err)
-      attempts.push({ provider: t.provider, model: t.model, error: msg, status: (err as any)?.status })
-      continue
+  // 2'li paralel batch — hız + tüm alternatifleri dene (token bitince sıradaki en iyiye geç)
+  const healthyTargets = targets.filter(t => manager.keysFor(t.provider).length > 0 || manager.rawKeysFor(t.provider).length > 0)
+  const queue = healthyTargets.length ? healthyTargets : targets
+  for (let i = 0; i < queue.length; i += 2) {
+    const batch = queue.slice(i, i + 2)
+    const results = await Promise.allSettled(batch.map(t => manager.chat(t.provider, t.model, messages, { temperature: 0.7, maxTokens: 1024 })))
+    for (let j = 0; j < results.length; j++) {
+      const r = results[j]
+      const t = batch[j]
+      if (r.status === "fulfilled") {
+        return { text: r.value.text, provider: r.value.provider, model: r.value.model, attempts }
+      } else {
+        const err: any = (r as any).reason
+        const msg = err?.message ?? String(err)
+        attempts.push({ provider: t.provider, model: t.model, error: msg, status: err?.status })
+      }
     }
   }
+  // hiçbiri olmadıysa tek tek kalanları da dene (son şans)
   return { text: null as any, provider: null as any, model: null as any, attempts } as any
 }
 
@@ -270,7 +279,10 @@ export async function POST(req: Request, { params }: { params: { chatId: string 
         ]
       }
 
-      order = order.slice(0, 4)
+      // token bitince öbür en iyi alternatife dön — tüm zinciri dene (sadece 2'li paralel, hızlı)
+      const availableCount = manager.availableProviders().length
+      const maxTry = Math.max(4, Math.min(order.length, availableCount || order.length, 7))
+      order = order.slice(0, maxTry)
       const result: any = await tryProviders(manager, order, messages)
 
       if (result && (result as any).text) {
