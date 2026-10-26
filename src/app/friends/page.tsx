@@ -50,8 +50,49 @@ export default function FriendsPage(){
         if(uid){
           const dk=lsKey(`dm:${uid}:${otherId}`)
           try{
-            if(marr.length) localStorage.setItem(dk, JSON.stringify(marr))
-            else { const cached=localStorage.getItem(dk); if(cached) marr=JSON.parse(cached) }
+            const cachedRaw = localStorage.getItem(dk)
+            const cached: any[] = cachedRaw ? JSON.parse(cachedRaw) : []
+            // Birleştir — sunucu eksikse yereli ezme, eski mesajlar kalsın
+            if(marr.length === 0 && cached.length > 0){
+              marr = cached
+            } else if(marr.length > 0 && cached.length > 0){
+              // iki tarafı birleştir, id'ye göre dedupe, zaman sıralı
+              const map = new Map<string, any>()
+              for(const m of [...cached, ...marr]) map.set(m.id, m)
+              // tmp id'li mesajlar sunucuda gerçek id ile geldiyse içerik + zamanla dedupe
+              const byContent = new Map<string, any>()
+              for(const m of Array.from(map.values())){
+                const key = `${m.senderId}|${m.content}|${m.createdAt?.slice(0,16)}`
+                if(!byContent.has(key)) byContent.set(key, m)
+                else {
+                  // sunucudaki gerçek id'yi tut, tmp'yi at
+                  const prev = byContent.get(key)
+                  if(prev.id?.startsWith("tmp-") && !m.id?.startsWith("tmp-")) byContent.set(key, m)
+                }
+              }
+              marr = Array.from(byContent.values()).sort((a,b)=> new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+            }
+            // Sunucu gerideyse (+ öbür taraf yeni yazdıysa) eksik yereli sunucuya sessizce geri yükle (token yakmaz)
+            if(cached.length > marr.length || cached.some((c:any)=> !marr.find((s:any)=> s.id===c.id && !c.id.startsWith("tmp-")))){
+              // sadece sunucuda olmayanları dene
+              const missing = cached.filter((c:any)=> !marr.some((s:any)=> s.id===c.id))
+              if(missing.length && missing.length < 20){
+                for(const mm of missing.slice(0,10)){
+                  // tmp id'ler sunucuya gerçek id ile gidecek, içerik aynı
+                  await fetch("/api/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({receiverId: mm.receiverId || otherId, content: mm.content}),credentials:"include"}).catch(()=>{})
+                }
+              }
+            }
+            localStorage.setItem(dk, JSON.stringify(marr))
+            // öbür tarafın perspektifine de yaz (karşı taraf yenileyince görsün)
+            try{
+              const dk2 = lsKey(`dm:${otherId}:${uid}`)
+              const cached2Raw = localStorage.getItem(dk2)
+              const cached2: any[] = cached2Raw ? JSON.parse(cached2Raw) : []
+              const map2 = new Map<string, any>()
+              for(const m of [...cached2, ...marr]) map2.set(m.id, m)
+              localStorage.setItem(dk2, JSON.stringify(Array.from(map2.values())))
+            }catch{}
           }catch{}
         }
         setDms(marr)
