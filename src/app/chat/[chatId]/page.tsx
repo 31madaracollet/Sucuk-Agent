@@ -100,12 +100,41 @@ export default function ChatPage() {
         setLoadError((j.error||`Yüklenemedi (${res.status})`) + (j.debug ? ` — ${JSON.stringify(j.debug)}` : "")); return
       }
       const data=await res.json()
-      setChat(data.chat); setMessages(data.messages??[]); setLoadError(null)
+      // akıllı birleştirme — sunucu boşken yereli ezme (yok olma bug'ını kes)
+      const serverMsgs: any[] = data.messages ?? []
+      let mergedMsgs = serverMsgs
+      try{
+        const uid=await getUid()
+        if(uid){
+          const localRaw = localStorage.getItem(msgsKey(uid,chatId))
+          const localMsgs: any[] = localRaw ? JSON.parse(localRaw) : []
+          // sunucu localden kısa ise yereli tut (ephemeral kayıp durumunda yok olmasın)
+          if(localMsgs.length > serverMsgs.length){
+            mergedMsgs = localMsgs
+            // arka planda sunucuya sessizce bulk restore dene (tek sefer, token yakmaz)
+            const attemptKey = `sucuk:restore-attempt:${uid}:${chatId}`
+            const last = localStorage.getItem(attemptKey)
+            if(!last || Date.now() - parseInt(last,10) > 60*1000){
+              try{ localStorage.setItem(attemptKey, String(Date.now())) }catch{}
+              fetch(`/api/chat/${chatId}/restore`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages: localMsgs.slice(0,60)}),credentials:"include"}).catch(()=>{})
+            }
+          } else if(serverMsgs.length > 0 || localMsgs.length===0){
+            // sunucu dolu veya ikisi de boşsa sunucuyu al
+            mergedMsgs = serverMsgs
+          }
+        }
+      }catch{}
+      setChat(data.chat); setMessages(mergedMsgs); setLoadError(null)
       try{
         const uid=await getUid()
         if(uid){
           localStorage.setItem(chatKey(uid,chatId), JSON.stringify(data.chat))
-          localStorage.setItem(msgsKey(uid,chatId), JSON.stringify(data.messages??[]))
+          // boşla ezme — sadece doluysa veya localle aynıysa yaz
+          const curRaw = localStorage.getItem(msgsKey(uid,chatId))
+          const curMsgs = curRaw ? JSON.parse(curRaw) : []
+          if(mergedMsgs.length >= curMsgs.length){
+            localStorage.setItem(msgsKey(uid,chatId), JSON.stringify(mergedMsgs))
+          }
           const perKey=chatsKey(uid); const ls=localStorage.getItem(perKey); const arr=ls?JSON.parse(ls):[]; if(!arr.find((c:any)=>c.id===data.chat.id)){ arr.unshift(data.chat); localStorage.setItem(perKey, JSON.stringify(arr)) }
         }
       }catch{}
@@ -119,7 +148,10 @@ export default function ChatPage() {
   }
 
   const sendingRef = useRef(false)
-  useEffect(()=>{ load(); const id=setInterval(async()=>{ if(sendingRef.current) return; try{ const r=await fetch(`/api/chat/${chatId}`,{credentials:"include"}); if(!r.ok) return; const d=await r.json(); setChat(d.chat); const serverLen = (d.messages??[]).length; setMessages(prev=> serverLen > prev.length ? d.messages : prev)}catch{}},15000); return()=>clearInterval(id)},[chatId])
+  const loadLock = useRef(false)
+  const lastLoadAt = useRef(0)
+  async function safeLoad(){ if(loadLock.current) return; if(Date.now() - lastLoadAt.current < 1500) return; loadLock.current = true; lastLoadAt.current = Date.now(); try{ await load() } finally { loadLock.current = false } }
+  useEffect(()=>{ safeLoad(); const id=setInterval(async()=>{ if(sendingRef.current || loadLock.current) return; if(Date.now() - lastLoadAt.current < 5000) return; try{ const r=await fetch(`/api/chat/${chatId}`,{credentials:"include"}); if(!r.ok) return; const d=await r.json(); setChat(d.chat); const serverLen = (d.messages??[]).length; setMessages(prev=> serverLen > prev.length ? d.messages : prev)}catch{}},20000); return()=>clearInterval(id)},[chatId])
   useEffect(()=>{ try{ const sp=new URLSearchParams(window.location.search); const f=sp.get("fullscreen"); if(f==="1"||f===null) setIsFullscreen(true); if(f==="0") setIsFullscreen(false)}catch{}},[])
   useEffect(()=>{ const onKey=(e:KeyboardEvent)=>{ if(e.key==="Escape"&&isFullscreen) setIsFullscreen(false)}; window.addEventListener("keydown",onKey); return()=>window.removeEventListener("keydown",onKey)},[isFullscreen])
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth", block:"end"}) },[messages, typingId])
